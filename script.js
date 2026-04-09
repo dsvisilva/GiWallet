@@ -1,3 +1,176 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTENTICAÇÃO — Firebase Auth (email/senha + Google)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Variáveis de auth ─────────────────────────────────────────────────────────
+let auth       = null;
+let authMode   = 'login'; // 'login' | 'register'
+
+// ── Inicializa auth e observa estado ─────────────────────────────────────────
+function initAuth() {
+  auth = firebase.auth();
+
+  // Resolve redirect do Google (caso tenha sido redirecionado)
+  auth.getRedirectResult().catch(() => {});
+
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      syncKey = user.uid;
+      renderUserUI(user);
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appRoot').style.display     = 'block';
+      startSync();
+    } else {
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('appRoot').style.display     = 'none';
+      setSyncing(false, true);
+    }
+  });
+}
+
+// ── UI do usuário no header ───────────────────────────────────────────────────
+function renderUserUI(user) {
+  const name    = user.displayName || user.email?.split('@')[0] || 'Usuário';
+  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  document.getElementById('userAvatar').textContent  = initials;
+  document.getElementById('menuUserName').textContent = name;
+  document.getElementById('menuUserEmail').textContent = user.email || '';
+}
+
+function toggleUserMenu() {
+  const m = document.getElementById('userMenu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+
+document.addEventListener('click', e => {
+  const menu   = document.getElementById('userMenu');
+  const avatar = document.getElementById('userAvatar');
+  if (menu && avatar && !menu.contains(e.target) && !avatar.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
+
+// ── Login com email/senha ─────────────────────────────────────────────────────
+function switchAuthTab(mode) {
+  authMode = mode;
+  document.getElementById('tabLogin').classList.toggle('active',    mode === 'login');
+  document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
+  document.getElementById('confirmPasswordField').style.display = mode === 'register' ? '' : 'none';
+  document.getElementById('authSubmitBtn').textContent = mode === 'login' ? 'Entrar' : 'Criar conta';
+  document.getElementById('forgotBtn').style.display   = mode === 'login' ? 'block' : 'none';
+  hideAuthError();
+}
+
+function submitAuth() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const confirm  = document.getElementById('auth-confirm').value;
+
+  if (!email || !password) { showAuthError('Preencha email e senha.'); return; }
+  if (authMode === 'register') {
+    if (password.length < 6)    { showAuthError('A senha deve ter pelo menos 6 caracteres.'); return; }
+    if (password !== confirm)    { showAuthError('As senhas não coincidem.'); return; }
+    auth.createUserWithEmailAndPassword(email, password).catch(e => showAuthError(firebaseAuthError(e.code)));
+  } else {
+    auth.signInWithEmailAndPassword(email, password).catch(e => showAuthError(firebaseAuthError(e.code)));
+  }
+}
+
+// ── Login com Google ──────────────────────────────────────────────────────────
+function loginGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  // Tenta popup; se bloqueado (mobile PWA), usa redirect
+  auth.signInWithPopup(provider).catch(err => {
+    if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user' ||
+        err.code === 'auth/cancelled-popup-request') {
+      auth.signInWithRedirect(provider);
+    } else {
+      showAuthError(firebaseAuthError(err.code));
+    }
+  });
+}
+
+// ── Recuperação de senha ──────────────────────────────────────────────────────
+function forgotPassword() {
+  document.getElementById('loginFormWrap').style.display  = 'none';
+  document.getElementById('resetFormWrap').style.display  = 'block';
+  document.getElementById('reset-email').value = document.getElementById('auth-email').value;
+}
+
+function showLoginForm() {
+  document.getElementById('loginFormWrap').style.display  = 'block';
+  document.getElementById('resetFormWrap').style.display  = 'none';
+}
+
+function sendReset() {
+  const email = document.getElementById('reset-email').value.trim();
+  if (!email) { showResetMsg('Digite seu email.', true); return; }
+  auth.sendPasswordResetEmail(email)
+    .then(() => showResetMsg('✅ Email enviado! Verifique sua caixa de entrada.', false))
+    .catch(e => showResetMsg(firebaseAuthError(e.code), true));
+}
+
+function showResetMsg(msg, isError) {
+  const el = document.getElementById('resetMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.color   = isError ? 'var(--red)' : 'var(--green)';
+  el.style.background = isError ? 'var(--red-bg)' : 'var(--green-bg)';
+}
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+function logout() {
+  if (!confirm('Sair da conta?')) return;
+  auth.signOut().then(() => {
+    syncKey   = null;
+    syncReady = false;
+    state     = { transactions: [], budgets: {}, theme: 'light',
+                  customCategories: { income: [], expense: [] },
+                  recurringTransactions: [], goals: [], budgetAlertThreshold: 80 };
+    document.getElementById('userMenu').style.display = 'none';
+  });
+}
+
+// ── Mensagens de erro amigáveis ───────────────────────────────────────────────
+function firebaseAuthError(code) {
+  const msgs = {
+    'auth/user-not-found':      'Usuário não encontrado.',
+    'auth/wrong-password':      'Senha incorreta.',
+    'auth/email-already-in-use':'Este email já está em uso.',
+    'auth/invalid-email':       'Email inválido.',
+    'auth/weak-password':       'Senha muito fraca.',
+    'auth/too-many-requests':   'Muitas tentativas. Tente mais tarde.',
+    'auth/network-request-failed': 'Sem conexão. Verifique sua internet.',
+    'auth/invalid-credential':  'Email ou senha incorretos.',
+  };
+  return msgs[code] || 'Erro ao autenticar. Tente novamente.';
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+function hideAuthError() {
+  document.getElementById('authError').classList.remove('show');
+}
+
+// ── Enter para submeter login ──────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('loginScreen').style.display !== 'none') {
+    if (document.getElementById('resetFormWrap').style.display !== 'none') {
+      sendReset();
+    } else {
+      submitAuth();
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// APP PRINCIPAL
+// ══════════════════════════════════════════════════════════════════════════════
+
 // ── Firebase Config ───────────────────────────────────────────────────────────
 
 const FIREBASE_CONFIG = {
@@ -67,6 +240,7 @@ function initFirebase(config) {
     if (!firebase.apps.length) firebase.initializeApp(config);
     db = firebase.firestore();
     db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    initAuth(); // inicializa autenticação
     return true;
   } catch (e) { console.error(e); return false; }
 }
@@ -125,32 +299,8 @@ function normalizeState(s) {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 function loadData() {
-  const savedKey = localStorage.getItem(LS_KEY);
   initFirebase(FIREBASE_CONFIG);
-  if (savedKey) {
-    syncKey = savedKey;
-    applyTheme(); renderAll(); startSync();
-    return;
-  }
-  document.getElementById('setupModal').classList.add('open');
-  setSyncing(false, true); applyTheme(); renderAll();
-}
-
-function saveSetup() {
-  const keyInput = document.getElementById('setup-key').value.trim().toLowerCase().replace(/\s+/g, '_');
-  if (!keyInput)          { showToast('⚠️ Digite uma chave de sincronização'); return; }
-  if (keyInput.length < 4){ showToast('⚠️ A chave precisa ter pelo menos 4 caracteres'); return; }
-  localStorage.setItem(LS_KEY, keyInput);
-  syncKey = keyInput;
-  closeModal('setupModal');
-  applyTheme(); renderAll(); startSync();
-  showToast('✅ Conectado! Sincronizando dados...');
-}
-
-function openSyncSettings() {
-  document.getElementById('setup-key').value = localStorage.getItem(LS_KEY) || '';
-  document.getElementById('setupCancelBtn').style.display = syncKey ? '' : 'none';
-  document.getElementById('setupModal').classList.add('open');
+  // A autenticação via onAuthStateChanged cuida do resto
 }
 
 // ── Utilitários ───────────────────────────────────────────────────────────────

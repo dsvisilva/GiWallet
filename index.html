@@ -19,16 +19,106 @@
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TELA DE LOGIN
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+
+    <div class="login-logo">
+      <img src="icon-192.png" alt="MinhasFinanças" class="login-icon">
+      <h1 class="login-title">MinhasFinanças</h1>
+      <p class="login-sub">Controle suas finanças com segurança</p>
+    </div>
+
+    <!-- Formulário de login / cadastro -->
+    <div id="loginFormWrap">
+
+      <!-- Abas -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">Entrar</button>
+        <button class="auth-tab" id="tabRegister" onclick="switchAuthTab('register')">Criar conta</button>
+      </div>
+
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="auth-email" placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div class="field" id="confirmPasswordField" style="display:none">
+        <label>Confirmar senha</label>
+        <input type="password" id="auth-confirm" placeholder="••••••••" autocomplete="new-password">
+      </div>
+
+      <div id="authError" class="auth-error"></div>
+
+      <button class="btn btn-primary btn-full" id="authSubmitBtn" onclick="submitAuth()">Entrar</button>
+
+      <button class="auth-link" id="forgotBtn" onclick="forgotPassword()" style="display:block">
+        Esqueci minha senha
+      </button>
+
+      <div class="auth-divider"><span>ou</span></div>
+
+      <button class="btn btn-google btn-full" onclick="loginGoogle()">
+        <svg width="18" height="18" viewBox="0 0 18 18" style="margin-right:8px">
+          <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
+          <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>
+          <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
+          <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
+        </svg>
+        Continuar com Google
+      </button>
+
+    </div>
+
+    <!-- Tela de recuperação de senha -->
+    <div id="resetFormWrap" style="display:none">
+      <button class="auth-back" onclick="showLoginForm()">← Voltar</button>
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:6px">Recuperar senha</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        Digite seu email e enviaremos um link para redefinir sua senha.
+      </p>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="reset-email" placeholder="seu@email.com">
+      </div>
+      <div id="resetMsg" class="auth-error"></div>
+      <button class="btn btn-primary btn-full" onclick="sendReset()">Enviar link</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     APP PRINCIPAL (oculto até autenticar)
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="appRoot" style="display:none">
+
 <!-- ─── Header ──────────────────────────────────────────────────────────────── -->
 <div class="header">
   <div class="logo"><span>💰</span> MinhasFinanças</div>
   <div class="header-actions">
-    <div class="sync-status" onclick="openSyncSettings()" title="Sincronização">
+    <div class="sync-status" id="syncBadge">
       <div class="sync-dot" id="syncDot"></div>
-      <span id="syncText">Conectando...</span>
+      <span id="syncText">Sincronizando...</span>
     </div>
+    <div class="user-avatar" id="userAvatar" onclick="toggleUserMenu()" title="Conta"></div>
     <button class="icon-btn" onclick="toggleTheme()" title="Tema">🌙</button>
   </div>
+</div>
+
+<!-- User dropdown -->
+<div class="user-menu" id="userMenu" style="display:none">
+  <div class="user-menu-info">
+    <div class="user-menu-name" id="menuUserName"></div>
+    <div class="user-menu-email" id="menuUserEmail"></div>
+  </div>
+  <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+  <button class="user-menu-item" onclick="logout()">🚪 Sair da conta</button>
 </div>
 
 <!-- ─── Nav ─────────────────────────────────────────────────────────────────── -->
@@ -40,27 +130,20 @@
   <div class="nav-item" onclick="showTab('config',this)">⚙️ Config</div>
 </div>
 
-<!-- ─── Conteúdo principal ───────────────────────────────────────────────────── -->
+<!-- ─── Conteúdo ─────────────────────────────────────────────────────────────── -->
 <div class="main">
 
-  <!-- ── Dashboard ── -->
+  <!-- Dashboard -->
   <div id="tab-dashboard">
     <div class="summary-grid" id="summaryCards"></div>
-
     <div class="section" id="comparisonSection">
-      <div class="section-header">
-        <span class="section-title">Comparação mensal</span>
-      </div>
+      <div class="section-header"><span class="section-title">Comparação mensal</span></div>
       <div id="comparisonBody"></div>
     </div>
-
     <div class="section">
-      <div class="section-header">
-        <span class="section-title">Receitas e Despesas (últimos 6 meses)</span>
-      </div>
+      <div class="section-header"><span class="section-title">Receitas e Despesas (últimos 6 meses)</span></div>
       <div class="bar-chart" id="monthlyChart"></div>
     </div>
-
     <div class="section">
       <div class="section-header">
         <span class="section-title">Últimas transações</span>
@@ -70,13 +153,13 @@
     </div>
   </div>
 
-  <!-- ── Transações ── -->
+  <!-- Transações -->
   <div id="tab-transactions" style="display:none">
     <div class="section">
       <div class="section-header">
         <span class="section-title">Todas as transações</span>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Exportar CSV">⬇ CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ CSV</button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Adicionar</button>
         </div>
       </div>
@@ -97,7 +180,7 @@
     </div>
   </div>
 
-  <!-- ── Orçamentos ── -->
+  <!-- Orçamentos -->
   <div id="tab-budgets" style="display:none">
     <div class="section">
       <div class="section-header">
@@ -118,7 +201,7 @@
     </div>
   </div>
 
-  <!-- ── Metas ── -->
+  <!-- Metas -->
   <div id="tab-goals" style="display:none">
     <div class="section">
       <div class="section-header">
@@ -129,10 +212,8 @@
     </div>
   </div>
 
-  <!-- ── Config ── -->
+  <!-- Config -->
   <div id="tab-config" style="display:none">
-
-    <!-- Transações recorrentes -->
     <div class="section">
       <div class="section-header">
         <span class="section-title">🔁 Transações recorrentes</span>
@@ -140,8 +221,6 @@
       </div>
       <div id="recurringList"></div>
     </div>
-
-    <!-- Categorias personalizadas -->
     <div class="section">
       <div class="section-header">
         <span class="section-title">🏷️ Categorias de Receita</span>
@@ -149,7 +228,6 @@
       </div>
       <div id="catIncomeList"></div>
     </div>
-
     <div class="section">
       <div class="section-header">
         <span class="section-title">🏷️ Categorias de Despesa</span>
@@ -157,16 +235,16 @@
       </div>
       <div id="catExpenseList"></div>
     </div>
-
   </div>
 
 </div><!-- .main -->
+</div><!-- #appRoot -->
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════════════════════
      MODAIS
-══════════════════════════════════════════════════════════════════════════ -->
+═══════════════════════════════════════════════════════════════════════════ -->
 
-<!-- ─── Nova transação ──────────────────────────────────────────────────────── -->
+<!-- Nova transação -->
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <div class="modal-header">
@@ -181,22 +259,10 @@
           <button class="type-btn"               id="btn-expense" onclick="setType('expense')">− Despesa</button>
         </div>
       </div>
-      <div class="field">
-        <label>Descrição</label>
-        <input type="text" id="tx-desc" placeholder="Ex: Salário, Mercado...">
-      </div>
-      <div class="field">
-        <label>Valor (R$)</label>
-        <input type="number" id="tx-amount" placeholder="0,00" step="0.01" min="0">
-      </div>
-      <div class="field">
-        <label>Categoria</label>
-        <select id="tx-cat"><option value="">Selecione...</option></select>
-      </div>
-      <div class="field">
-        <label>Data</label>
-        <input type="date" id="tx-date">
-      </div>
+      <div class="field"><label>Descrição</label><input type="text" id="tx-desc" placeholder="Ex: Salário, Mercado..."></div>
+      <div class="field"><label>Valor (R$)</label><input type="number" id="tx-amount" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="field"><label>Categoria</label><select id="tx-cat"><option value="">Selecione...</option></select></div>
+      <div class="field"><label>Data</label><input type="date" id="tx-date"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('addModal')">Cancelar</button>
@@ -205,7 +271,7 @@
   </div>
 </div>
 
-<!-- ─── Orçamento ────────────────────────────────────────────────────────────── -->
+<!-- Orçamento -->
 <div class="modal-overlay" id="budgetModal">
   <div class="modal">
     <div class="modal-header">
@@ -213,14 +279,8 @@
       <button class="icon-btn" onclick="closeModal('budgetModal')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label>Categoria</label>
-        <select id="budget-cat"></select>
-      </div>
-      <div class="field">
-        <label>Limite mensal (R$)</label>
-        <input type="number" id="budget-amount" placeholder="0,00" step="0.01" min="0">
-      </div>
+      <div class="field"><label>Categoria</label><select id="budget-cat"></select></div>
+      <div class="field"><label>Limite mensal (R$)</label><input type="number" id="budget-amount" placeholder="0,00" step="0.01" min="0"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('budgetModal')">Cancelar</button>
@@ -229,7 +289,7 @@
   </div>
 </div>
 
-<!-- ─── Meta financeira ──────────────────────────────────────────────────────── -->
+<!-- Meta -->
 <div class="modal-overlay" id="goalModal">
   <div class="modal">
     <div class="modal-header">
@@ -238,27 +298,12 @@
     </div>
     <div class="modal-body">
       <div style="display:grid;grid-template-columns:60px 1fr;gap:10px">
-        <div class="field">
-          <label>Ícone</label>
-          <input type="text" id="goal-icon" placeholder="🎯" maxlength="2" style="text-align:center;font-size:22px">
-        </div>
-        <div class="field">
-          <label>Nome da meta</label>
-          <input type="text" id="goal-name" placeholder="Ex: Viagem, Carro...">
-        </div>
+        <div class="field"><label>Ícone</label><input type="text" id="goal-icon" placeholder="🎯" maxlength="2" style="text-align:center;font-size:22px"></div>
+        <div class="field"><label>Nome da meta</label><input type="text" id="goal-name" placeholder="Ex: Viagem, Carro..."></div>
       </div>
-      <div class="field">
-        <label>Valor da meta (R$)</label>
-        <input type="number" id="goal-target" placeholder="0,00" step="0.01" min="0">
-      </div>
-      <div class="field">
-        <label>Valor já guardado (R$)</label>
-        <input type="number" id="goal-saved" placeholder="0,00" step="0.01" min="0">
-      </div>
-      <div class="field">
-        <label>Prazo (opcional)</label>
-        <input type="date" id="goal-deadline">
-      </div>
+      <div class="field"><label>Valor da meta (R$)</label><input type="number" id="goal-target" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="field"><label>Valor já guardado (R$)</label><input type="number" id="goal-saved" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="field"><label>Prazo (opcional)</label><input type="date" id="goal-deadline"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('goalModal')">Cancelar</button>
@@ -267,7 +312,7 @@
   </div>
 </div>
 
-<!-- ─── Contribuição para meta ───────────────────────────────────────────────── -->
+<!-- Contribuição para meta -->
 <div class="modal-overlay" id="goalContribModal">
   <div class="modal">
     <div class="modal-header">
@@ -275,10 +320,7 @@
       <button class="icon-btn" onclick="closeModal('goalContribModal')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label id="goalContribLabel">Valor a guardar (R$)</label>
-        <input type="number" id="goal-contrib" placeholder="0,00" step="0.01" min="0">
-      </div>
+      <div class="field"><label id="goalContribLabel">Valor a guardar (R$)</label><input type="number" id="goal-contrib" placeholder="0,00" step="0.01" min="0"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('goalContribModal')">Cancelar</button>
@@ -287,7 +329,7 @@
   </div>
 </div>
 
-<!-- ─── Transação recorrente ─────────────────────────────────────────────────── -->
+<!-- Transação recorrente -->
 <div class="modal-overlay" id="recurringModal">
   <div class="modal">
     <div class="modal-header">
@@ -302,20 +344,10 @@
           <button class="type-btn"               id="rec-btn-expense" onclick="setRecType('expense')">− Despesa</button>
         </div>
       </div>
-      <div class="field">
-        <label>Descrição</label>
-        <input type="text" id="rec-desc" placeholder="Ex: Salário, Netflix...">
-      </div>
-      <div class="field">
-        <label>Valor (R$)</label>
-        <input type="number" id="rec-amount" placeholder="0,00" step="0.01" min="0">
-      </div>
-      <div class="field">
-        <label>Categoria</label>
-        <select id="rec-cat"><option value="">Selecione...</option></select>
-      </div>
-      <div class="field">
-        <label>Frequência</label>
+      <div class="field"><label>Descrição</label><input type="text" id="rec-desc" placeholder="Ex: Salário, Netflix..."></div>
+      <div class="field"><label>Valor (R$)</label><input type="number" id="rec-amount" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="field"><label>Categoria</label><select id="rec-cat"><option value="">Selecione...</option></select></div>
+      <div class="field"><label>Frequência</label>
         <select id="rec-freq" onchange="updateRecurringFields()">
           <option value="monthly">Mensal</option>
           <option value="weekly">Semanal</option>
@@ -329,18 +361,13 @@
       <div class="field" id="rec-month-field" style="display:none">
         <label>Mês</label>
         <select id="rec-month">
-          <option value="1">Janeiro</option><option value="2">Fevereiro</option>
-          <option value="3">Março</option><option value="4">Abril</option>
-          <option value="5">Maio</option><option value="6">Junho</option>
-          <option value="7">Julho</option><option value="8">Agosto</option>
-          <option value="9">Setembro</option><option value="10">Outubro</option>
-          <option value="11">Novembro</option><option value="12">Dezembro</option>
+          <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
+          <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
+          <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
+          <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
         </select>
       </div>
-      <div class="field">
-        <label>Data de início</label>
-        <input type="date" id="rec-start">
-      </div>
+      <div class="field"><label>Data de início</label><input type="date" id="rec-start"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('recurringModal')">Cancelar</button>
@@ -349,7 +376,7 @@
   </div>
 </div>
 
-<!-- ─── Categoria personalizada ──────────────────────────────────────────────── -->
+<!-- Categoria personalizada -->
 <div class="modal-overlay" id="categoryModal">
   <div class="modal">
     <div class="modal-header">
@@ -358,14 +385,8 @@
     </div>
     <div class="modal-body">
       <div style="display:grid;grid-template-columns:60px 1fr;gap:10px">
-        <div class="field">
-          <label>Ícone</label>
-          <input type="text" id="cat-icon" placeholder="📦" maxlength="2" style="text-align:center;font-size:22px">
-        </div>
-        <div class="field">
-          <label>Nome</label>
-          <input type="text" id="cat-name" placeholder="Ex: Pet, Beleza...">
-        </div>
+        <div class="field"><label>Ícone</label><input type="text" id="cat-icon" placeholder="📦" maxlength="2" style="text-align:center;font-size:22px"></div>
+        <div class="field"><label>Nome</label><input type="text" id="cat-name" placeholder="Ex: Pet, Beleza..."></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -375,41 +396,12 @@
   </div>
 </div>
 
-<!-- ─── Setup ────────────────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="setupModal">
-  <div class="modal modal-setup">
-    <div class="modal-header">
-      <span class="modal-title">⚙️ Configurar Sincronização</span>
-    </div>
-    <div class="modal-body">
-      <div class="setup-step">
-        <div class="setup-step-title">Bem-vindo ao MinhasFinanças! 👋</div>
-        <div class="setup-step-desc">
-          Crie uma <strong>chave de sincronização</strong> — qualquer palavra ou frase.
-          Use a <strong>mesma chave</strong> em todos os seus dispositivos para sincronizar os dados automaticamente.
-        </div>
-      </div>
-      <div class="field">
-        <label>Sua chave de sincronização</label>
-        <input type="text" id="setup-key" placeholder="Ex: minhasfinancas2024" autocomplete="off">
-      </div>
-      <div class="setup-step" style="border-left-color:var(--amber)">
-        <div class="setup-step-title" style="color:var(--amber)">⚠️ Guarde bem essa chave!</div>
-        <div class="setup-step-desc">Quem tiver a mesma chave consegue ver seus dados.</div>
-      </div>
-    </div>
-    <div class="modal-footer" style="justify-content:space-between">
-      <button class="btn btn-ghost" onclick="closeModal('setupModal')" id="setupCancelBtn" style="display:none">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveSetup()">✅ Conectar e Sincronizar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ─── Toast ────────────────────────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
 <!-- ─── Firebase SDK ─────────────────────────────────────────────────────────── -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 <script src="script.js"></script>
 </body>
