@@ -1,3 +1,15 @@
+// ── Firebase Config ───────────────────────────────────────────────────────────
+
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyAfY-_-nFQIbNwvse30Ctbfsnq9b-FQnLA",
+  authDomain:        "app-de-financas-do-davi.firebaseapp.com",
+  projectId:         "app-de-financas-do-davi",
+  storageBucket:     "app-de-financas-do-davi.firebasestorage.app",
+  messagingSenderId: "784308862884",
+  appId:             "1:784308862884:web:7f82582ecd9fa70f05cb31",
+  measurementId:     "G-XWFEGCG9PB",
+};
+
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const CATEGORIES = {
@@ -21,7 +33,6 @@ const CATEGORIES = {
   ],
 };
 
-const LS_CONFIG  = 'financas_firebase_config';
 const LS_KEY     = 'financas_sync_key';
 const COLLECTION = 'financas';
 
@@ -111,25 +122,20 @@ async function saveData() {
 // ── Setup / Configuração ──────────────────────────────────────────────────────
 
 function loadData() {
-  const savedConfig = localStorage.getItem(LS_CONFIG);
-  const savedKey    = localStorage.getItem(LS_KEY);
+  const savedKey = localStorage.getItem(LS_KEY);
 
-  if (savedConfig && savedKey) {
-    try {
-      const config = JSON.parse(savedConfig);
-      if (initFirebase(config)) {
-        syncKey = savedKey;
-        applyTheme();
-        renderAll();
-        startSync();
-        return;
-      }
-    } catch (e) {
-      console.error('Config salva inválida:', e);
-    }
+  // Inicializa Firebase com o config embutido
+  initFirebase(FIREBASE_CONFIG);
+
+  if (savedKey) {
+    syncKey = savedKey;
+    applyTheme();
+    renderAll();
+    startSync();
+    return;
   }
 
-  // Primeira vez — mostrar modal de setup
+  // Primeira vez neste dispositivo — pedir apenas a chave de sincronização
   document.getElementById('setupModal').classList.add('open');
   setSyncing(false, true);
   applyTheme();
@@ -137,11 +143,10 @@ function loadData() {
 }
 
 function saveSetup() {
-  const configRaw = document.getElementById('setup-config').value.trim();
-  const keyInput  = document.getElementById('setup-key').value.trim().toLowerCase().replace(/\s+/g, '_');
+  const keyInput = document.getElementById('setup-key').value.trim().toLowerCase().replace(/\s+/g, '_');
 
-  if (!configRaw || !keyInput) {
-    showToast('⚠️ Preencha todos os campos');
+  if (!keyInput) {
+    showToast('⚠️ Digite uma chave de sincronização');
     return;
   }
 
@@ -150,37 +155,6 @@ function saveSetup() {
     return;
   }
 
-  let config;
-  try {
-    // Aceita tanto JSON puro quanto o objeto JS sem aspas nas chaves
-    config = JSON.parse(configRaw);
-  } catch (e) {
-    showToast('❌ Config inválida. Verifique se é um JSON válido.');
-    return;
-  }
-
-  if (!config.apiKey || !config.projectId) {
-    showToast('❌ Config incompleta. Precisa de apiKey e projectId.');
-    return;
-  }
-
-  // Resetar Firebase se já inicializado com outra config
-  if (firebase.apps.length) {
-    firebase.apps[0].delete().then(() => {
-      finishSetup(config, keyInput);
-    });
-  } else {
-    finishSetup(config, keyInput);
-  }
-}
-
-function finishSetup(config, keyInput) {
-  if (!initFirebase(config)) {
-    showToast('❌ Erro ao conectar ao Firebase. Verifique a config.');
-    return;
-  }
-
-  localStorage.setItem(LS_CONFIG, JSON.stringify(config));
   localStorage.setItem(LS_KEY, keyInput);
   syncKey = keyInput;
 
@@ -193,17 +167,7 @@ function finishSetup(config, keyInput) {
 
 function openSyncSettings() {
   const savedKey = localStorage.getItem(LS_KEY) || '';
-  const savedConfig = localStorage.getItem(LS_CONFIG);
-
   document.getElementById('setup-key').value = savedKey;
-  if (savedConfig) {
-    try {
-      document.getElementById('setup-config').value =
-        JSON.stringify(JSON.parse(savedConfig), null, 2);
-    } catch (e) {}
-  }
-
-  // Mostrar botão cancelar (só quando re-abrindo, não na primeira vez)
   document.getElementById('setupCancelBtn').style.display = savedKey ? '' : 'none';
   document.getElementById('setupModal').classList.add('open');
 }

@@ -163,38 +163,24 @@
     <div class="modal-body">
 
       <div class="setup-step">
-        <div class="setup-step-title">Passo 1 — Criar projeto no Firebase</div>
+        <div class="setup-step-title">Bem-vindo ao MinhasFinanças! 👋</div>
         <div class="setup-step-desc">
-          Acesse <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a>,
-          crie um projeto gratuito, adicione um <strong>app Web</strong> e copie o objeto
-          <code>firebaseConfig</code> que aparece. Depois, ative o <strong>Firestore Database</strong>
-          em modo de teste.
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Cole aqui o firebaseConfig (JSON)</label>
-        <textarea id="setup-config" rows="6" placeholder='{
-  "apiKey": "AIza...",
-  "authDomain": "meu-projeto.firebaseapp.com",
-  "projectId": "meu-projeto",
-  "storageBucket": "meu-projeto.appspot.com",
-  "messagingSenderId": "123456789",
-  "appId": "1:123:web:abc"
-}'></textarea>
-      </div>
-
-      <div class="setup-step">
-        <div class="setup-step-title">Passo 2 — Escolher sua chave de sincronização</div>
-        <div class="setup-step-desc">
-          Crie uma senha/chave pessoal (qualquer palavra ou frase). Use a <strong>mesma chave</strong>
-          em todos os seus dispositivos para sincronizar os dados.
+          Crie uma <strong>chave de sincronização</strong> — pode ser qualquer palavra ou frase.
+          Use a <strong>mesma chave</strong> em todos os seus dispositivos (PC, celular, tablet)
+          para que os dados fiquem sempre sincronizados automaticamente.
         </div>
       </div>
 
       <div class="field">
         <label>Sua chave de sincronização</label>
         <input type="text" id="setup-key" placeholder="Ex: minhasfinancas2024" autocomplete="off" />
+      </div>
+
+      <div class="setup-step" style="border-left-color: var(--amber)">
+        <div class="setup-step-title" style="color: var(--amber)">⚠️ Guarde bem essa chave!</div>
+        <div class="setup-step-desc">
+          Quem tiver a mesma chave consegue ver seus dados. Use algo pessoal e difícil de adivinhar.
+        </div>
       </div>
 
     </div>
