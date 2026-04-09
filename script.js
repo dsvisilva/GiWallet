@@ -1,8 +1,5 @@
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY   = 'financas_data_v2';
-const SYNC_INTERVAL = 4000;
-
 const CATEGORIES = {
   income: [
     { id: 'salario',      label: 'Salário',           icon: '💼' },
@@ -24,11 +21,192 @@ const CATEGORIES = {
   ],
 };
 
+const LS_CONFIG  = 'financas_firebase_config';
+const LS_KEY     = 'financas_sync_key';
+const COLLECTION = 'financas';
+
 // ── Estado global ─────────────────────────────────────────────────────────────
 
 let state       = { transactions: [], budgets: {}, theme: 'light' };
 let currentType = 'income';
-let syncing     = false;
+let db          = null;
+let syncKey     = null;
+let isWriting   = false;
+let syncReady   = false;
+
+// ── Firebase ──────────────────────────────────────────────────────────────────
+
+function initFirebase(config) {
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(config);
+    }
+    db = firebase.firestore();
+    // Ativa persistência offline (funciona mesmo sem internet)
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    return true;
+  } catch (e) {
+    console.error('Erro ao inicializar Firebase:', e);
+    return false;
+  }
+}
+
+function startSync() {
+  if (!db || !syncKey) return;
+
+  setSyncing(true);
+
+  db.collection(COLLECTION).doc(syncKey).onSnapshot(
+    (doc) => {
+      // Ignora atualizações causadas por escrita local
+      if (isWriting) { setSyncing(false); return; }
+
+      if (doc.exists) {
+        const remote = doc.data();
+        // Garantir tipos corretos
+        if (!Array.isArray(remote.transactions)) remote.transactions = [];
+        if (!remote.budgets || typeof remote.budgets !== 'object') remote.budgets = {};
+        if (!remote.theme) remote.theme = 'light';
+
+        const remoteStr = JSON.stringify(remote);
+        const localStr  = JSON.stringify(state);
+
+        if (remoteStr !== localStr) {
+          state = remote;
+          applyTheme();
+          renderAll();
+          if (syncReady) showToast('📡 Sincronizado com outro dispositivo!');
+        }
+      } else {
+        // Documento não existe ainda (primeira vez) — salvar estado inicial
+        saveData();
+      }
+
+      syncReady = true;
+      setSyncing(false);
+      renderAll();
+    },
+    (err) => {
+      console.error('Erro de sincronização:', err);
+      setSyncing(false, true);
+      showToast('❌ Erro de sincronização. Verifique sua conexão.');
+    }
+  );
+}
+
+async function saveData() {
+  if (!db || !syncKey) return;
+  isWriting = true;
+  setSyncing(true);
+  try {
+    await db.collection(COLLECTION).doc(syncKey).set(state);
+  } catch (e) {
+    showToast('❌ Erro ao salvar');
+    console.error(e);
+  }
+  isWriting = false;
+  setTimeout(() => setSyncing(false), 600);
+}
+
+// ── Setup / Configuração ──────────────────────────────────────────────────────
+
+function loadData() {
+  const savedConfig = localStorage.getItem(LS_CONFIG);
+  const savedKey    = localStorage.getItem(LS_KEY);
+
+  if (savedConfig && savedKey) {
+    try {
+      const config = JSON.parse(savedConfig);
+      if (initFirebase(config)) {
+        syncKey = savedKey;
+        applyTheme();
+        renderAll();
+        startSync();
+        return;
+      }
+    } catch (e) {
+      console.error('Config salva inválida:', e);
+    }
+  }
+
+  // Primeira vez — mostrar modal de setup
+  document.getElementById('setupModal').classList.add('open');
+  setSyncing(false, true);
+  applyTheme();
+  renderAll();
+}
+
+function saveSetup() {
+  const configRaw = document.getElementById('setup-config').value.trim();
+  const keyInput  = document.getElementById('setup-key').value.trim().toLowerCase().replace(/\s+/g, '_');
+
+  if (!configRaw || !keyInput) {
+    showToast('⚠️ Preencha todos os campos');
+    return;
+  }
+
+  if (keyInput.length < 4) {
+    showToast('⚠️ A chave precisa ter pelo menos 4 caracteres');
+    return;
+  }
+
+  let config;
+  try {
+    // Aceita tanto JSON puro quanto o objeto JS sem aspas nas chaves
+    config = JSON.parse(configRaw);
+  } catch (e) {
+    showToast('❌ Config inválida. Verifique se é um JSON válido.');
+    return;
+  }
+
+  if (!config.apiKey || !config.projectId) {
+    showToast('❌ Config incompleta. Precisa de apiKey e projectId.');
+    return;
+  }
+
+  // Resetar Firebase se já inicializado com outra config
+  if (firebase.apps.length) {
+    firebase.apps[0].delete().then(() => {
+      finishSetup(config, keyInput);
+    });
+  } else {
+    finishSetup(config, keyInput);
+  }
+}
+
+function finishSetup(config, keyInput) {
+  if (!initFirebase(config)) {
+    showToast('❌ Erro ao conectar ao Firebase. Verifique a config.');
+    return;
+  }
+
+  localStorage.setItem(LS_CONFIG, JSON.stringify(config));
+  localStorage.setItem(LS_KEY, keyInput);
+  syncKey = keyInput;
+
+  closeModal('setupModal');
+  applyTheme();
+  renderAll();
+  startSync();
+  showToast('✅ Conectado! Sincronizando dados...');
+}
+
+function openSyncSettings() {
+  const savedKey = localStorage.getItem(LS_KEY) || '';
+  const savedConfig = localStorage.getItem(LS_CONFIG);
+
+  document.getElementById('setup-key').value = savedKey;
+  if (savedConfig) {
+    try {
+      document.getElementById('setup-config').value =
+        JSON.stringify(JSON.parse(savedConfig), null, 2);
+    } catch (e) {}
+  }
+
+  // Mostrar botão cancelar (só quando re-abrindo, não na primeira vez)
+  document.getElementById('setupCancelBtn').style.display = savedKey ? '' : 'none';
+  document.getElementById('setupModal').classList.add('open');
+}
 
 // ── Utilitários ───────────────────────────────────────────────────────────────
 
@@ -44,59 +222,13 @@ function getCatInfo(catId) {
   return all.find(c => c.id === catId) || { label: catId, icon: '📌' };
 }
 
-// ── Storage / Sincronização ───────────────────────────────────────────────────
-
-async function loadData() {
-  try {
-    const result = await window.storage.get(STORAGE_KEY, true);
-    if (result && result.value) {
-      state = { ...state, ...JSON.parse(result.value) };
-    }
-  } catch (e) {}
-
-  applyTheme();
-  renderAll();
-  setInterval(syncData, SYNC_INTERVAL);
-}
-
-async function saveData() {
-  setSyncing(true);
-  try {
-    await window.storage.set(STORAGE_KEY, JSON.stringify(state), true);
-  } catch (e) {}
-  setTimeout(() => setSyncing(false), 600);
-}
-
-async function syncData() {
-  try {
-    const result = await window.storage.get(STORAGE_KEY, true);
-    if (result && result.value) {
-      const remote = JSON.parse(result.value);
-      if (JSON.stringify(remote) !== JSON.stringify(state)) {
-        state = { ...state, ...remote };
-        applyTheme();
-        renderAll();
-        showToast('📡 Dados sincronizados!');
-      }
-    }
-  } catch (e) {}
-}
-
-function setSyncing(val) {
-  syncing = val;
-  const dot = document.getElementById('syncDot');
-  const txt = document.getElementById('syncText');
-  dot.className = 'sync-dot' + (val ? ' syncing' : '');
-  txt.textContent = val ? 'Sincronizando...' : 'Sincronizado';
-}
-
 // ── Toast ─────────────────────────────────────────────────────────────────────
 
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+  setTimeout(() => t.classList.remove('show'), 2800);
 }
 
 // ── Tema ──────────────────────────────────────────────────────────────────────
@@ -109,6 +241,24 @@ function toggleTheme() {
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme || 'light');
+  const btn = document.querySelector('[onclick="toggleTheme()"]');
+  if (btn) btn.textContent = state.theme === 'dark' ? '☀️' : '🌙';
+}
+
+// ── Status de sincronização ───────────────────────────────────────────────────
+
+function setSyncing(val, offline = false) {
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncText');
+  if (!dot || !txt) return;
+
+  if (offline) {
+    dot.className = 'sync-dot offline';
+    txt.textContent = 'Desconectado';
+  } else {
+    dot.className = 'sync-dot' + (val ? ' syncing' : '');
+    txt.textContent = val ? 'Sincronizando...' : 'Sincronizado';
+  }
 }
 
 // ── Navegação por abas ────────────────────────────────────────────────────────
@@ -147,9 +297,13 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
 
-// Fechar modal ao clicar no overlay
+// Fechar modal ao clicar fora (exceto o setupModal na primeira vez)
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+  o.addEventListener('click', e => {
+    if (e.target !== o) return;
+    if (o.id === 'setupModal' && !localStorage.getItem(LS_KEY)) return;
+    o.classList.remove('open');
+  });
 });
 
 // ── Tipo de transação ─────────────────────────────────────────────────────────
@@ -164,7 +318,9 @@ function setType(type) {
 function populateCatSelect() {
   const sel = document.getElementById('tx-cat');
   sel.innerHTML = '<option value="">Selecione...</option>' +
-    CATEGORIES[currentType].map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+    CATEGORIES[currentType]
+      .map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`)
+      .join('');
 }
 
 // ── Transações ────────────────────────────────────────────────────────────────
@@ -179,6 +335,8 @@ function saveTransaction() {
     showToast('⚠️ Preencha todos os campos');
     return;
   }
+
+  if (!state.transactions) state.transactions = [];
 
   state.transactions.push({
     id: Date.now().toString(),
@@ -197,10 +355,11 @@ function saveTransaction() {
 }
 
 function deleteTransaction(id) {
-  state.transactions = state.transactions.filter(t => t.id !== id);
+  if (!confirm('Remover esta transação?')) return;
+  state.transactions = (state.transactions || []).filter(t => t.id !== id);
   saveData();
   renderAll();
-  showToast('🗑️ Removida');
+  showToast('🗑️ Transação removida');
 }
 
 // ── Orçamentos ────────────────────────────────────────────────────────────────
@@ -223,6 +382,7 @@ function saveBudget() {
 }
 
 function deleteBudget(cat) {
+  if (!confirm('Remover este orçamento?')) return;
   delete state.budgets[cat];
   saveData();
   renderBudgets();
@@ -240,11 +400,12 @@ function renderAll() {
 function renderSummary() {
   const now       = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const txMonth   = state.transactions.filter(t => t.date.startsWith(thisMonth));
+  const txs       = state.transactions || [];
+  const txMonth   = txs.filter(t => t.date.startsWith(thisMonth));
   const income    = txMonth.filter(t => t.type === 'income') .reduce((s, t) => s + t.amount, 0);
   const expense   = txMonth.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const balance   = income - expense;
-  const total     = state.transactions.reduce((s, t) => t.type === 'income' ? s + t.amount : s - t.amount, 0);
+  const total     = txs.reduce((s, t) => t.type === 'income' ? s + t.amount : s - t.amount, 0);
   const month     = now.toLocaleDateString('pt-BR', { month: 'long' });
 
   document.getElementById('summaryCards').innerHTML = `
@@ -266,14 +427,16 @@ function renderSummary() {
     <div class="summary-card">
       <div class="summary-label">Resultado (${month})</div>
       <div class="summary-value ${balance >= 0 ? 'green' : 'red'}">${fmt(balance)}</div>
-      <div class="summary-sub">${balance >= 0 ? 'Superávit' : 'Déficit'}</div>
+      <div class="summary-sub">${balance >= 0 ? 'Superávit ✓' : 'Déficit ⚠'}</div>
     </div>
   `;
 }
 
 function renderChart() {
   const months = {};
-  state.transactions.forEach(t => {
+  const txs = state.transactions || [];
+
+  txs.forEach(t => {
     const k = t.date.slice(0, 7);
     if (!months[k]) months[k] = { income: 0, expense: 0 };
     months[k][t.type] += t.amount;
@@ -296,7 +459,7 @@ function renderChart() {
     const ep    = (months[k].expense / maxVal * 100).toFixed(1);
     return `
       <div style="margin-bottom:14px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${label}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500">${label}</div>
         <div class="bar-row" style="margin-bottom:4px">
           <div class="bar-label" style="color:var(--green);font-size:11px">Receita</div>
           <div class="bar-track"><div class="bar-fill income" style="width:${ip}%"></div></div>
@@ -322,8 +485,8 @@ function txHTML(t) {
       <div class="tx-desc">${t.desc}</div>
       <div class="tx-meta">${cat.label} · ${d}</div>
     </div>
-    <div class="tx-amount ${t.type === 'income' ? 'income' : 'expense'}">
-      ${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}
+    <div class="tx-amount ${t.type}">
+      ${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}
     </div>
     <button class="tx-delete" onclick="deleteTransaction('${t.id}')" title="Remover">🗑</button>
   </li>`;
@@ -331,7 +494,9 @@ function txHTML(t) {
 
 function renderRecent() {
   const list   = document.getElementById('recentList');
-  const recent = state.transactions.slice(0, 5);
+  const txs    = state.transactions || [];
+  const recent = txs.slice(0, 5);
+
   list.innerHTML = recent.length
     ? recent.map(txHTML).join('')
     : `<div class="empty">
@@ -342,13 +507,19 @@ function renderRecent() {
 }
 
 function populateFilters() {
-  const cats   = new Set(state.transactions.map(t => t.cat));
+  const txs    = state.transactions || [];
+  const cats   = new Set(txs.map(t => t.cat));
   const catSel = document.getElementById('filterCat');
-  catSel.innerHTML = '<option value="">Todas as categorias</option>' +
-    [...cats].map(c => { const i = getCatInfo(c); return `<option value="${c}">${i.icon} ${i.label}</option>`; }).join('');
 
-  const months = [...new Set(state.transactions.map(t => t.date.slice(0, 7)))].sort().reverse();
+  catSel.innerHTML = '<option value="">Todas as categorias</option>' +
+    [...cats].map(c => {
+      const i = getCatInfo(c);
+      return `<option value="${c}">${i.icon} ${i.label}</option>`;
+    }).join('');
+
+  const months = [...new Set(txs.map(t => t.date.slice(0, 7)))].sort().reverse();
   const mSel   = document.getElementById('filterMonth');
+
   mSel.innerHTML = '<option value="">Todos os meses</option>' +
     months.map(m => {
       const d = new Date(m + '-01');
@@ -360,10 +531,10 @@ function renderTransactions() {
   const type  = document.getElementById('filterType').value;
   const cat   = document.getElementById('filterCat').value;
   const month = document.getElementById('filterMonth').value;
+  let txs = state.transactions || [];
 
-  let txs = state.transactions;
-  if (type)  txs = txs.filter(t => t.type === type);
-  if (cat)   txs = txs.filter(t => t.cat  === cat);
+  if (type)  txs = txs.filter(t => t.type  === type);
+  if (cat)   txs = txs.filter(t => t.cat   === cat);
   if (month) txs = txs.filter(t => t.date.startsWith(month));
 
   const list = document.getElementById('allTxList');
@@ -375,9 +546,10 @@ function renderTransactions() {
 function renderBudgets() {
   const now       = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const txs       = state.transactions || [];
 
   const expenses = {};
-  state.transactions
+  txs
     .filter(t => t.type === 'expense' && t.date.startsWith(thisMonth))
     .forEach(t => { expenses[t.cat] = (expenses[t.cat] || 0) + t.amount; });
 
@@ -405,7 +577,7 @@ function renderBudgets() {
         <div class="budget-name">${info.icon} ${info.label}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="budget-values" style="color:${color};font-weight:600">${fmt(spent)} / ${fmt(limit)}</div>
-          <button class="btn btn-ghost btn-sm" onclick="deleteBudget('${cat}')" title="Remover">🗑</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteBudget('${cat}')">🗑</button>
         </div>
       </div>
       <div class="budget-bar-track">
