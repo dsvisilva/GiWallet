@@ -442,22 +442,53 @@ function openAddModal() {
   document.getElementById('tx-desc').value   = '';
   document.getElementById('tx-amount').value = '';
   document.getElementById('tx-date').value   = todayStr();
+  const installCheck = document.getElementById('tx-is-installment');
+  if (installCheck) installCheck.checked = false;
+  const installWrap = document.getElementById('tx-installment-wrap');
+  if (installWrap) installWrap.style.display = 'none';
+  const installNum = document.getElementById('tx-installments');
+  if (installNum) installNum.value = '';
   document.getElementById('addModal').classList.add('open');
 }
 
+function toggleInstallmentField() {
+  const checked = document.getElementById('tx-is-installment').checked;
+  document.getElementById('tx-installment-wrap').style.display = checked ? '' : 'none';
+}
+
 function saveTransaction() {
-  const desc   = document.getElementById('tx-desc').value.trim();
-  const amount = parseFloat(document.getElementById('tx-amount').value);
-  const cat    = document.getElementById('tx-cat').value;
-  const date   = document.getElementById('tx-date').value;
+  const desc       = document.getElementById('tx-desc').value.trim();
+  const amount     = parseFloat(document.getElementById('tx-amount').value);
+  const cat        = document.getElementById('tx-cat').value;
+  const date       = document.getElementById('tx-date').value;
+  const isInstall  = document.getElementById('tx-is-installment')?.checked;
+  const numInstall = parseInt(document.getElementById('tx-installments')?.value) || 1;
 
   if (!desc || !amount || amount <= 0 || !cat || !date) { showToast('⚠️ Preencha todos os campos'); return; }
 
-  state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date });
+  if (isInstall && numInstall >= 2) {
+    const baseDate = new Date(date + 'T00:00:00');
+    const parcela  = Math.round((amount / numInstall) * 100) / 100;
+    for (let i = 0; i < numInstall; i++) {
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
+      state.transactions.push({
+        id:     Date.now().toString() + '_p' + i,
+        type:   currentType,
+        desc:   `${desc} (${i + 1}/${numInstall})`,
+        amount: parcela,
+        cat,
+        date:   d.toISOString().slice(0, 10),
+      });
+    }
+    showToast(`✅ ${numInstall}x de ${fmt(parcela)} criadas!`);
+  } else {
+    state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date });
+    showToast('✅ Transação salva!');
+  }
+
   state.transactions.sort((a, b) => b.date.localeCompare(a.date));
   closeModal('addModal');
   saveData(); renderAll();
-  showToast('✅ Transação salva!');
   checkBudgetAlerts();
 }
 
@@ -813,7 +844,72 @@ function renderAll() {
   renderComparison();
   renderChart();
   renderPieChart();
+  renderUpcoming();
   renderRecent();
+}
+
+// ── Próximos vencimentos ──────────────────────────────────────────────────────
+
+function getNextDueDate(r, fromDate) {
+  const today = new Date(fromDate);
+  today.setHours(0, 0, 0, 0);
+
+  if (r.freq === 'monthly') {
+    let d = new Date(today.getFullYear(), today.getMonth(), r.day);
+    if (d < today) d = new Date(today.getFullYear(), today.getMonth() + 1, r.day);
+    return d;
+  } else if (r.freq === 'weekly') {
+    const diff = (r.day - today.getDay() + 7) % 7;
+    return new Date(today.getTime() + diff * 86400000);
+  } else if (r.freq === 'yearly') {
+    let d = new Date(today.getFullYear(), (r.month || 1) - 1, r.day);
+    if (d < today) d = new Date(today.getFullYear() + 1, (r.month || 1) - 1, r.day);
+    return d;
+  }
+  return null;
+}
+
+function renderUpcoming() {
+  const today   = new Date(); today.setHours(0, 0, 0, 0);
+  const horizon = new Date(today.getTime() + 7 * 86400000); // próximos 7 dias
+
+  const upcoming = (state.recurringTransactions || [])
+    .filter(r => r.active)
+    .map(r => ({ ...r, nextDate: getNextDueDate(r, today) }))
+    .filter(r => r.nextDate && r.nextDate <= horizon)
+    .sort((a, b) => a.nextDate - b.nextDate);
+
+  const section   = document.getElementById('upcomingSection');
+  const container = document.getElementById('upcomingList');
+  const countEl   = document.getElementById('upcomingCount');
+  if (!section || !container) return;
+
+  if (!upcoming.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  if (countEl) countEl.textContent = upcoming.length;
+
+  container.innerHTML = upcoming.map(r => {
+    const cat      = getCatInfo(r.cat);
+    const daysLeft = Math.round((r.nextDate - today) / 86400000);
+    const label    = daysLeft === 0 ? 'Vence hoje!' : daysLeft === 1 ? 'Amanhã' : `Em ${daysLeft} dias`;
+    const urgColor = daysLeft === 0 ? 'var(--red)' : daysLeft <= 2 ? 'var(--amber)' : 'var(--blue)';
+    const sign     = r.type === 'income' ? '+' : '−';
+    const amtClass = r.type === 'income' ? 'income' : 'expense';
+
+    return `<div class="upcoming-item">
+      <div class="tx-icon" style="background:${r.type === 'income' ? 'var(--green-bg)' : 'var(--red-bg)'}">
+        ${cat.icon}
+      </div>
+      <div class="upcoming-info">
+        <div class="upcoming-desc">${r.desc}</div>
+        <div class="upcoming-meta">${cat.label}</div>
+      </div>
+      <div class="upcoming-right">
+        <div class="tx-amount ${amtClass}">${sign}${fmt(r.amount)}</div>
+        <div class="upcoming-badge" style="color:${urgColor}">${label}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
