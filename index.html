@@ -11,29 +11,34 @@
 <body>
 
 <div class="header">
-  <div class="logo"><span>💰</span> MinhasFinanças</div>
-  <div class="header-actions">
-    <div class="sync-status">
-      <div class="sync-dot" id="syncDot"></div>
-      <span id="syncText">Sincronizado</span>
-    </div>
-    <button class="icon-btn" onclick="toggleTheme()">🌙</button>
-  </div>
-</div>
-
-<div class="nav">
-  <div class="nav-item active" onclick="showTab('dashboard', this)">📊 Visão Geral</div>
-  <div class="nav-item" onclick="showTab('transactions', this)">💳 Transações</div>
-  <div class="nav-item" onclick="showTab('budgets', this)">🎯 Orçamentos</div>
+  <div class="logo">💰 MinhasFinanças</div>
+  <button onclick="toggleTheme()">🌙</button>
 </div>
 
 <div class="main">
-  <!-- Mantém TODO o conteúdo interno igual -->
+  <h2>Adicionar Transação</h2>
+
+  <input id="tx-desc" placeholder="Descrição">
+  <input id="tx-amount" type="number" placeholder="Valor">
+  
+  <select id="tx-cat">
+    <option value="salario">Salário</option>
+    <option value="alimentacao">Alimentação</option>
+  </select>
+
+  <input id="tx-date" type="date">
+
+  <button onclick="saveTransaction()">Salvar</button>
+
+  <h2>Resumo</h2>
+  <div id="summaryCards"></div>
+
+  <h2>Transações</h2>
+  <ul id="allTxList"></ul>
 </div>
 
-<!-- Modais continuam iguais -->
-
 <div class="toast" id="toast"></div>
+
 <script type="module" src="script.js"></script>
 </body>
 </html>

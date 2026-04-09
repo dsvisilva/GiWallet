@@ -1,24 +1,41 @@
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg: #f5f7fa;
-  --surface: #ffffff;
-  --surface2: #f0f2f5;
-  --border: rgba(0,0,0,0.1);
-  --text: #1a1a2e;
-  --muted: #6b7280;
-  --green: #10b981;
-  --green-bg: #ecfdf5;
-  --red: #ef4444;
-  --red-bg: #fef2f2;
-  --blue: #3b82f6;
-  --blue-bg: #eff6ff;
-  --purple: #8b5cf6;
-  --purple-bg: #f5f3ff;
-  --amber: #f59e0b;
-  --amber-bg: #fffbeb;
-  --radius: 12px;
-  --radius-sm: 8px;
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f7fa;
+  padding: 20px;
 }
 
-/* TODO o resto do CSS exatamente igual */
+.header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.main input, .main select, .main button {
+  display: block;
+  margin: 10px 0;
+  padding: 10px;
+  width: 100%;
+  max-width: 300px;
+}
+
+#summaryCards {
+  margin: 20px 0;
+}
+
+#allTxList li {
+  margin: 5px 0;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: black;
+  color: white;
+  padding: 10px;
+  display: none;
+}
+
+.toast.show {
+  display: block;
+}
