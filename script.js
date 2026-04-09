@@ -1,81 +1,421 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+// ── Constantes ────────────────────────────────────────────────────────────────
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAfY-_-nFQIbNwvse30Ctbfsnq9b-FQnLA",
-  authDomain: "app-de-financas-do-davi.firebaseapp.com",
-  projectId: "app-de-financas-do-davi",
+const STORAGE_KEY   = 'financas_data_v2';
+const SYNC_INTERVAL = 4000;
+
+const CATEGORIES = {
+  income: [
+    { id: 'salario',      label: 'Salário',           icon: '💼' },
+    { id: 'freelance',    label: 'Freelance',          icon: '💻' },
+    { id: 'investimento', label: 'Investimento',       icon: '📈' },
+    { id: 'aluguel_rec',  label: 'Aluguel recebido',   icon: '🏠' },
+    { id: 'outros_rec',   label: 'Outros',             icon: '✨' },
+  ],
+  expense: [
+    { id: 'moradia',      label: 'Moradia',            icon: '🏠' },
+    { id: 'alimentacao',  label: 'Alimentação',        icon: '🍽️' },
+    { id: 'transporte',   label: 'Transporte',         icon: '🚗' },
+    { id: 'saude',        label: 'Saúde',              icon: '💊' },
+    { id: 'lazer',        label: 'Lazer',              icon: '🎮' },
+    { id: 'educacao',     label: 'Educação',           icon: '📚' },
+    { id: 'vestuario',    label: 'Vestuário',          icon: '👗' },
+    { id: 'streaming',    label: 'Streaming',          icon: '📺' },
+    { id: 'outros_exp',   label: 'Outros',             icon: '📦' },
+  ],
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// ── Estado global ─────────────────────────────────────────────────────────────
 
-const docRef = doc(db, "financas", "user1");
+let state       = { transactions: [], budgets: {}, theme: 'light' };
+let currentType = 'income';
+let syncing     = false;
 
-let state = { transactions: [], theme: 'light' };
+// ── Utilitários ───────────────────────────────────────────────────────────────
 
-// 🔁 sincronização em tempo real
-onSnapshot(docRef, (snap) => {
-  if (snap.exists()) {
-    state = snap.data();
-    renderAll();
-    showToast("📡 Sincronizado");
-  }
-});
-
-// 💾 salvar no firebase
-async function saveData() {
-  await setDoc(docRef, state);
+function fmt(val) {
+  return 'R$ ' + parseFloat(val || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-// ➕ adicionar transação
-window.saveTransaction = function () {
-  const desc = document.getElementById('tx-desc').value;
-  const amount = parseFloat(document.getElementById('tx-amount').value);
-  const cat = document.getElementById('tx-cat').value;
-  const date = document.getElementById('tx-date').value;
+function getCatInfo(catId) {
+  const all = [...CATEGORIES.income, ...CATEGORIES.expense];
+  return all.find(c => c.id === catId) || { label: catId, icon: '📌' };
+}
 
-  if (!desc || !amount || !date) {
-    showToast("Preenche tudo aí 😅");
+// ── Storage / Sincronização ───────────────────────────────────────────────────
+
+async function loadData() {
+  try {
+    const result = await window.storage.get(STORAGE_KEY, true);
+    if (result && result.value) {
+      state = { ...state, ...JSON.parse(result.value) };
+    }
+  } catch (e) {}
+
+  applyTheme();
+  renderAll();
+  setInterval(syncData, SYNC_INTERVAL);
+}
+
+async function saveData() {
+  setSyncing(true);
+  try {
+    await window.storage.set(STORAGE_KEY, JSON.stringify(state), true);
+  } catch (e) {}
+  setTimeout(() => setSyncing(false), 600);
+}
+
+async function syncData() {
+  try {
+    const result = await window.storage.get(STORAGE_KEY, true);
+    if (result && result.value) {
+      const remote = JSON.parse(result.value);
+      if (JSON.stringify(remote) !== JSON.stringify(state)) {
+        state = { ...state, ...remote };
+        applyTheme();
+        renderAll();
+        showToast('📡 Dados sincronizados!');
+      }
+    }
+  } catch (e) {}
+}
+
+function setSyncing(val) {
+  syncing = val;
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncText');
+  dot.className = 'sync-dot' + (val ? ' syncing' : '');
+  txt.textContent = val ? 'Sincronizando...' : 'Sincronizado';
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Tema ──────────────────────────────────────────────────────────────────────
+
+function toggleTheme() {
+  state.theme = state.theme === 'light' ? 'dark' : 'light';
+  applyTheme();
+  saveData();
+}
+
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', state.theme || 'light');
+}
+
+// ── Navegação por abas ────────────────────────────────────────────────────────
+
+function showTab(tab, el) {
+  ['dashboard', 'transactions', 'budgets'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
+  });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  if (tab === 'transactions') { populateFilters(); renderTransactions(); }
+  if (tab === 'budgets')      renderBudgets();
+}
+
+// ── Modais ────────────────────────────────────────────────────────────────────
+
+function openAddModal() {
+  setType('income');
+  document.getElementById('tx-desc').value   = '';
+  document.getElementById('tx-amount').value = '';
+  document.getElementById('tx-date').value   = new Date().toISOString().slice(0, 10);
+  populateCatSelect();
+  document.getElementById('addModal').classList.add('open');
+}
+
+function openBudgetModal() {
+  const sel = document.getElementById('budget-cat');
+  sel.innerHTML = CATEGORIES.expense
+    .map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`)
+    .join('');
+  document.getElementById('budget-amount').value = '';
+  document.getElementById('budgetModal').classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Fechar modal ao clicar no overlay
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ── Tipo de transação ─────────────────────────────────────────────────────────
+
+function setType(type) {
+  currentType = type;
+  document.getElementById('btn-income').className  = 'type-btn' + (type === 'income'  ? ' active-income'  : '');
+  document.getElementById('btn-expense').className = 'type-btn' + (type === 'expense' ? ' active-expense' : '');
+  populateCatSelect();
+}
+
+function populateCatSelect() {
+  const sel = document.getElementById('tx-cat');
+  sel.innerHTML = '<option value="">Selecione...</option>' +
+    CATEGORIES[currentType].map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+}
+
+// ── Transações ────────────────────────────────────────────────────────────────
+
+function saveTransaction() {
+  const desc   = document.getElementById('tx-desc').value.trim();
+  const amount = parseFloat(document.getElementById('tx-amount').value);
+  const cat    = document.getElementById('tx-cat').value;
+  const date   = document.getElementById('tx-date').value;
+
+  if (!desc || !amount || amount <= 0 || !cat || !date) {
+    showToast('⚠️ Preencha todos os campos');
     return;
   }
 
   state.transactions.push({
     id: Date.now().toString(),
+    type: currentType,
     desc,
     amount,
     cat,
-    date
+    date,
   });
 
+  state.transactions.sort((a, b) => b.date.localeCompare(a.date));
+  closeModal('addModal');
   saveData();
-};
+  renderAll();
+  showToast('✅ Transação salva!');
+}
 
-// 🧾 render
+function deleteTransaction(id) {
+  state.transactions = state.transactions.filter(t => t.id !== id);
+  saveData();
+  renderAll();
+  showToast('🗑️ Removida');
+}
+
+// ── Orçamentos ────────────────────────────────────────────────────────────────
+
+function saveBudget() {
+  const cat    = document.getElementById('budget-cat').value;
+  const amount = parseFloat(document.getElementById('budget-amount').value);
+
+  if (!cat || !amount || amount <= 0) {
+    showToast('⚠️ Preencha os campos');
+    return;
+  }
+
+  if (!state.budgets) state.budgets = {};
+  state.budgets[cat] = amount;
+  closeModal('budgetModal');
+  saveData();
+  renderBudgets();
+  showToast('✅ Orçamento definido!');
+}
+
+function deleteBudget(cat) {
+  delete state.budgets[cat];
+  saveData();
+  renderBudgets();
+  showToast('🗑️ Orçamento removido');
+}
+
+// ── Renderização ──────────────────────────────────────────────────────────────
+
 function renderAll() {
-  const list = document.getElementById('allTxList');
-  const summary = document.getElementById('summaryCards');
+  renderSummary();
+  renderChart();
+  renderRecent();
+}
 
-  let total = 0;
+function renderSummary() {
+  const now       = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const txMonth   = state.transactions.filter(t => t.date.startsWith(thisMonth));
+  const income    = txMonth.filter(t => t.type === 'income') .reduce((s, t) => s + t.amount, 0);
+  const expense   = txMonth.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const balance   = income - expense;
+  const total     = state.transactions.reduce((s, t) => t.type === 'income' ? s + t.amount : s - t.amount, 0);
+  const month     = now.toLocaleDateString('pt-BR', { month: 'long' });
 
-  list.innerHTML = state.transactions.map(t => {
-    total += t.amount;
-    return `<li>${t.desc} - R$ ${t.amount}</li>`;
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="summary-card">
+      <div class="summary-label">Saldo total</div>
+      <div class="summary-value ${total >= 0 ? 'blue' : 'red'}">${fmt(total)}</div>
+      <div class="summary-sub">Acumulado</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Receitas (${month})</div>
+      <div class="summary-value green">${fmt(income)}</div>
+      <div class="summary-sub">${txMonth.filter(t => t.type === 'income').length} transações</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Despesas (${month})</div>
+      <div class="summary-value red">${fmt(expense)}</div>
+      <div class="summary-sub">${txMonth.filter(t => t.type === 'expense').length} transações</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Resultado (${month})</div>
+      <div class="summary-value ${balance >= 0 ? 'green' : 'red'}">${fmt(balance)}</div>
+      <div class="summary-sub">${balance >= 0 ? 'Superávit' : 'Déficit'}</div>
+    </div>
+  `;
+}
+
+function renderChart() {
+  const months = {};
+  state.transactions.forEach(t => {
+    const k = t.date.slice(0, 7);
+    if (!months[k]) months[k] = { income: 0, expense: 0 };
+    months[k][t.type] += t.amount;
+  });
+
+  const keys = Object.keys(months).sort().slice(-6);
+
+  if (!keys.length) {
+    document.getElementById('monthlyChart').innerHTML =
+      '<div class="empty"><div class="empty-icon">📊</div>Nenhum dado ainda</div>';
+    return;
+  }
+
+  const maxVal = Math.max(...keys.map(k => Math.max(months[k].income, months[k].expense)), 1);
+
+  document.getElementById('monthlyChart').innerHTML = keys.map(k => {
+    const d     = new Date(k + '-01');
+    const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+    const ip    = (months[k].income  / maxVal * 100).toFixed(1);
+    const ep    = (months[k].expense / maxVal * 100).toFixed(1);
+    return `
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${label}</div>
+        <div class="bar-row" style="margin-bottom:4px">
+          <div class="bar-label" style="color:var(--green);font-size:11px">Receita</div>
+          <div class="bar-track"><div class="bar-fill income" style="width:${ip}%"></div></div>
+          <div class="bar-val" style="color:var(--green)">${fmt(months[k].income)}</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label" style="color:var(--red);font-size:11px">Despesa</div>
+          <div class="bar-track"><div class="bar-fill expense" style="width:${ep}%"></div></div>
+          <div class="bar-val" style="color:var(--red)">${fmt(months[k].expense)}</div>
+        </div>
+      </div>`;
   }).join('');
-
-  summary.innerHTML = `<strong>Total: R$ ${total}</strong>`;
 }
 
-// 🌙 tema
-window.toggleTheme = function () {
-  document.body.classList.toggle('dark');
-};
+function txHTML(t) {
+  const cat = getCatInfo(t.cat);
+  const d   = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
+  const bg  = t.type === 'income' ? 'var(--green-bg)' : 'var(--red-bg)';
 
-// 🔔 toast
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-
-  setTimeout(() => t.classList.remove('show'), 2000);
+  return `<li class="tx-item">
+    <div class="tx-icon" style="background:${bg}">${cat.icon}</div>
+    <div class="tx-info">
+      <div class="tx-desc">${t.desc}</div>
+      <div class="tx-meta">${cat.label} · ${d}</div>
+    </div>
+    <div class="tx-amount ${t.type === 'income' ? 'income' : 'expense'}">
+      ${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}
+    </div>
+    <button class="tx-delete" onclick="deleteTransaction('${t.id}')" title="Remover">🗑</button>
+  </li>`;
 }
+
+function renderRecent() {
+  const list   = document.getElementById('recentList');
+  const recent = state.transactions.slice(0, 5);
+  list.innerHTML = recent.length
+    ? recent.map(txHTML).join('')
+    : `<div class="empty">
+         <div class="empty-icon">💳</div>
+         Nenhuma transação ainda<br><br>
+         <button class="btn btn-primary" onclick="openAddModal()">Adicionar primeira transação</button>
+       </div>`;
+}
+
+function populateFilters() {
+  const cats   = new Set(state.transactions.map(t => t.cat));
+  const catSel = document.getElementById('filterCat');
+  catSel.innerHTML = '<option value="">Todas as categorias</option>' +
+    [...cats].map(c => { const i = getCatInfo(c); return `<option value="${c}">${i.icon} ${i.label}</option>`; }).join('');
+
+  const months = [...new Set(state.transactions.map(t => t.date.slice(0, 7)))].sort().reverse();
+  const mSel   = document.getElementById('filterMonth');
+  mSel.innerHTML = '<option value="">Todos os meses</option>' +
+    months.map(m => {
+      const d = new Date(m + '-01');
+      return `<option value="${m}">${d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</option>`;
+    }).join('');
+}
+
+function renderTransactions() {
+  const type  = document.getElementById('filterType').value;
+  const cat   = document.getElementById('filterCat').value;
+  const month = document.getElementById('filterMonth').value;
+
+  let txs = state.transactions;
+  if (type)  txs = txs.filter(t => t.type === type);
+  if (cat)   txs = txs.filter(t => t.cat  === cat);
+  if (month) txs = txs.filter(t => t.date.startsWith(month));
+
+  const list = document.getElementById('allTxList');
+  list.innerHTML = txs.length
+    ? txs.map(txHTML).join('')
+    : '<div class="empty"><div class="empty-icon">🔍</div>Nenhuma transação encontrada</div>';
+}
+
+function renderBudgets() {
+  const now       = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const expenses = {};
+  state.transactions
+    .filter(t => t.type === 'expense' && t.date.startsWith(thisMonth))
+    .forEach(t => { expenses[t.cat] = (expenses[t.cat] || 0) + t.amount; });
+
+  const b         = state.budgets || {};
+  const container = document.getElementById('budgetList');
+
+  if (!Object.keys(b).length) {
+    container.innerHTML = `<div class="empty">
+      <div class="empty-icon">🎯</div>
+      Nenhum orçamento definido<br><br>
+      <button class="btn btn-primary" onclick="openBudgetModal()">Definir primeiro orçamento</button>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = Object.entries(b).map(([cat, limit]) => {
+    const spent = expenses[cat] || 0;
+    const pct   = Math.min((spent / limit) * 100, 100);
+    const info  = getCatInfo(cat);
+    const over  = spent > limit;
+    const color = over ? 'var(--red)' : pct > 75 ? 'var(--amber)' : 'var(--green)';
+
+    return `<div class="budget-item">
+      <div class="budget-top">
+        <div class="budget-name">${info.icon} ${info.label}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="budget-values" style="color:${color};font-weight:600">${fmt(spent)} / ${fmt(limit)}</div>
+          <button class="btn btn-ghost btn-sm" onclick="deleteBudget('${cat}')" title="Remover">🗑</button>
+        </div>
+      </div>
+      <div class="budget-bar-track">
+        <div class="budget-bar-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+      ${over ? `<div class="budget-warning">⚠️ Limite ultrapassado em ${fmt(spent - limit)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Inicialização ─────────────────────────────────────────────────────────────
+
+loadData();

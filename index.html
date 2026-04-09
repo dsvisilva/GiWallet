@@ -1,44 +1,162 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MinhasFinanças</title>
-
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MinhasFinanças</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
+<!-- ─── Header ─────────────────────────────────────────────────────────── -->
 <div class="header">
-  <div class="logo">💰 MinhasFinanças</div>
-  <button onclick="toggleTheme()">🌙</button>
+  <div class="logo">
+    <span>💰</span> MinhasFinanças
+  </div>
+  <div class="header-actions">
+    <div class="sync-status">
+      <div class="sync-dot" id="syncDot"></div>
+      <span id="syncText">Sincronizado</span>
+    </div>
+    <button class="icon-btn" onclick="toggleTheme()" title="Alternar tema">🌙</button>
+  </div>
 </div>
 
+<!-- ─── Nav ────────────────────────────────────────────────────────────── -->
+<div class="nav">
+  <div class="nav-item active" onclick="showTab('dashboard', this)">📊 Visão Geral</div>
+  <div class="nav-item" onclick="showTab('transactions', this)">💳 Transações</div>
+  <div class="nav-item" onclick="showTab('budgets', this)">🎯 Orçamentos</div>
+</div>
+
+<!-- ─── Conteúdo principal ──────────────────────────────────────────────── -->
 <div class="main">
-  <h2>Adicionar Transação</h2>
 
-  <input id="tx-desc" placeholder="Descrição">
-  <input id="tx-amount" type="number" placeholder="Valor">
-  
-  <select id="tx-cat">
-    <option value="salario">Salário</option>
-    <option value="alimentacao">Alimentação</option>
-  </select>
+  <!-- Dashboard -->
+  <div id="tab-dashboard">
+    <div class="summary-grid" id="summaryCards"></div>
 
-  <input id="tx-date" type="date">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Receitas e Despesas (últimos meses)</span>
+      </div>
+      <div class="bar-chart" id="monthlyChart"></div>
+    </div>
 
-  <button onclick="saveTransaction()">Salvar</button>
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Últimas transações</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Adicionar</button>
+      </div>
+      <ul class="tx-list" id="recentList"></ul>
+    </div>
+  </div>
 
-  <h2>Resumo</h2>
-  <div id="summaryCards"></div>
+  <!-- Transações -->
+  <div id="tab-transactions" style="display:none">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Todas as transações</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Adicionar</button>
+      </div>
+      <div class="filter-bar">
+        <select id="filterType" onchange="renderTransactions()">
+          <option value="">Todos os tipos</option>
+          <option value="income">Receitas</option>
+          <option value="expense">Despesas</option>
+        </select>
+        <select id="filterCat" onchange="renderTransactions()">
+          <option value="">Todas as categorias</option>
+        </select>
+        <select id="filterMonth" onchange="renderTransactions()">
+          <option value="">Todos os meses</option>
+        </select>
+      </div>
+      <ul class="tx-list" id="allTxList"></ul>
+    </div>
+  </div>
 
-  <h2>Transações</h2>
-  <ul id="allTxList"></ul>
+  <!-- Orçamentos -->
+  <div id="tab-budgets" style="display:none">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Orçamentos por categoria</span>
+        <button class="btn btn-primary btn-sm" onclick="openBudgetModal()">+ Definir orçamento</button>
+      </div>
+      <div id="budgetList"></div>
+    </div>
+  </div>
+
 </div>
 
+<!-- ─── Modal: nova transação ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nova transação</span>
+      <button class="icon-btn" onclick="closeModal('addModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Tipo</label>
+        <div class="type-toggle">
+          <button class="type-btn active-income" id="btn-income" onclick="setType('income')">+ Receita</button>
+          <button class="type-btn" id="btn-expense" onclick="setType('expense')">− Despesa</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Descrição</label>
+        <input type="text" id="tx-desc" placeholder="Ex: Salário, Mercado..." />
+      </div>
+      <div class="field">
+        <label>Valor (R$)</label>
+        <input type="number" id="tx-amount" placeholder="0,00" step="0.01" min="0" />
+      </div>
+      <div class="field">
+        <label>Categoria</label>
+        <select id="tx-cat">
+          <option value="">Selecione...</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Data</label>
+        <input type="date" id="tx-date" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addModal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTransaction()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Modal: orçamento ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="budgetModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Definir orçamento mensal</span>
+      <button class="icon-btn" onclick="closeModal('budgetModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Categoria</label>
+        <select id="budget-cat"></select>
+      </div>
+      <div class="field">
+        <label>Limite mensal (R$)</label>
+        <input type="number" id="budget-amount" placeholder="0,00" step="0.01" min="0" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('budgetModal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveBudget()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast ───────────────────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
-<script type="module" src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
