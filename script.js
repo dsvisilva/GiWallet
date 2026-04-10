@@ -122,12 +122,14 @@ function showResetMsg(msg, isError) {
 function logout() {
   if (!confirm('Sair da conta?')) return;
   auth.signOut().then(() => {
-    syncKey   = null;
-    syncReady = false;
-    state     = { transactions: [], budgets: {}, theme: 'light',
-                  customCategories: { income: [], expense: [] },
-                  recurringTransactions: [], goals: [], budgetAlertThreshold: 80,
-                  onboardingDone: false };
+    syncKey           = null;
+    syncReady         = false;
+    currentFamilyCode = null;
+    if (unsubscribeSync) { unsubscribeSync(); unsubscribeSync = null; }
+    state = { transactions: [], budgets: {}, theme: 'light',
+              customCategories: { income: [], expense: [] },
+              recurringTransactions: [], goals: [], budgetAlertThreshold: 80,
+              onboardingDone: false, accounts: [] };
     document.getElementById('userMenu').style.display = 'none';
   });
 }
@@ -223,6 +225,7 @@ let state = {
   goals:                [],
   budgetAlertThreshold: 80,
   onboardingDone:       false,
+  accounts:             [],
 };
 
 let currentType       = 'income';
@@ -231,12 +234,15 @@ let editingGoalId     = null;
 let goalContribId     = null;
 let editingCatType    = null;
 let editingTxId       = null;
+let editingAccountId  = null;
 let db                = null;
 let syncKey           = null;
 let isWriting         = false;
 let syncReady         = false;
 let monthlyChartInst  = null;
 let pieChartInst      = null;
+let unsubscribeSync   = null;
+let currentFamilyCode = localStorage.getItem('giwallet_family') || null;
 
 // Paleta de cores para o gráfico de categorias
 const PIE_COLORS = [
@@ -257,11 +263,23 @@ function initFirebase(config) {
   } catch (e) { console.error(e); return false; }
 }
 
+function getDataDocKey() {
+  return currentFamilyCode ? 'family_' + currentFamilyCode : syncKey;
+}
+
 function startSync() {
   if (!db || !syncKey) return;
+  currentFamilyCode = localStorage.getItem('giwallet_family') || null;
+  startDataSync();
+}
+
+function startDataSync() {
+  if (!db || !syncKey) return;
+  if (unsubscribeSync) { unsubscribeSync(); unsubscribeSync = null; }
   setSyncing(true);
 
-  db.collection(COLLECTION).doc(syncKey).onSnapshot(doc => {
+  const dataKey = getDataDocKey();
+  unsubscribeSync = db.collection(COLLECTION).doc(dataKey).onSnapshot(doc => {
     if (isWriting) { setSyncing(false); return; }
     if (doc.exists) {
       const remote = normalizeState(doc.data());
@@ -287,12 +305,18 @@ function startSync() {
   });
 }
 
+function restartDataSync() {
+  syncReady = false;
+  startDataSync();
+}
+
 async function saveData() {
   if (!db || !syncKey) return;
   isWriting = true;
   setSyncing(true);
   try {
-    await db.collection(COLLECTION).doc(syncKey).set(state);
+    const dataKey = getDataDocKey();
+    await db.collection(COLLECTION).doc(dataKey).set(state);
   } catch (e) { showToast('Erro ao salvar'); }
   isWriting = false;
   setTimeout(() => setSyncing(false), 600);
@@ -308,6 +332,7 @@ function normalizeState(s) {
     goals:                 Array.isArray(s.goals) ? s.goals : [],
     budgetAlertThreshold:  s.budgetAlertThreshold || 80,
     onboardingDone:        s.onboardingDone || false,
+    accounts:              Array.isArray(s.accounts) ? s.accounts : [],
   };
 }
 
@@ -467,6 +492,10 @@ function openAddModal(id = null) {
   const installNum = document.getElementById('tx-installments');
   if (installNum) installNum.value = '';
 
+  populateAccountSelect();
+  const accSel = document.getElementById('tx-account');
+  if (accSel) accSel.value = tx ? (tx.accountId || '') : '';
+
   document.querySelector('#addModal .modal-title').textContent = id ? 'Editar transação' : 'Nova transação';
   document.getElementById('addModal').classList.add('open');
 }
@@ -481,6 +510,7 @@ function saveTransaction() {
   const amount     = parseFloat(document.getElementById('tx-amount').value);
   const cat        = document.getElementById('tx-cat').value;
   const date       = document.getElementById('tx-date').value;
+  const accountId  = document.getElementById('tx-account')?.value || null;
   const isInstall  = document.getElementById('tx-is-installment')?.checked;
   const numInstall = parseInt(document.getElementById('tx-installments')?.value) || 1;
 
@@ -489,7 +519,7 @@ function saveTransaction() {
   if (editingTxId) {
     const idx = state.transactions.findIndex(t => t.id === editingTxId);
     if (idx >= 0) {
-      state.transactions[idx] = { ...state.transactions[idx], type: currentType, desc, amount, cat, date };
+      state.transactions[idx] = { ...state.transactions[idx], type: currentType, desc, amount, cat, date, accountId: accountId || null };
     }
     editingTxId = null;
     showToast('Transação atualizada');
@@ -499,17 +529,18 @@ function saveTransaction() {
     for (let i = 0; i < numInstall; i++) {
       const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
       state.transactions.push({
-        id:     Date.now().toString() + '_p' + i,
-        type:   currentType,
-        desc:   `${desc} (${i + 1}/${numInstall})`,
-        amount: parcela,
+        id:        Date.now().toString() + '_p' + i,
+        type:      currentType,
+        desc:      `${desc} (${i + 1}/${numInstall})`,
+        amount:    parcela,
         cat,
-        date:   d.toISOString().slice(0, 10),
+        date:      d.toISOString().slice(0, 10),
+        accountId: accountId || null,
       });
     }
     showToast(`${numInstall}x de ${fmt(parcela)} criadas`);
   } else {
-    state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date });
+    state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date, accountId: accountId || null });
     showToast('Transação salva');
   }
 
@@ -543,8 +574,20 @@ function checkBudgetAlerts() {
     const info  = getCatInfo(cat);
     if (spent > limit) {
       showToast(`${info.label}: limite ultrapassado`);
+      if (Notification.permission === 'granted') {
+        new Notification('GiWallet — Orçamento ultrapassado! 🚨', {
+          body: `${info.icon} ${info.label}: ${fmt(spent)} de ${fmt(limit)}`,
+          icon: './icon-192.png', tag: 'budget-over-' + cat,
+        });
+      }
     } else if (pct >= threshold) {
       showToast(`${info.label}: ${pct.toFixed(0)}% do limite`);
+      if (Notification.permission === 'granted') {
+        new Notification('GiWallet — Alerta de orçamento ⚡', {
+          body: `${info.icon} ${info.label}: ${pct.toFixed(0)}% do limite`,
+          icon: './icon-192.png', tag: 'budget-warn-' + cat,
+        });
+      }
     }
   });
 }
@@ -868,6 +911,7 @@ function exportCSV() {
 
 function renderAll() {
   renderSummary();
+  renderAccountBalances();
   renderComparison();
   renderChart();
   renderPieChart();
@@ -1371,6 +1415,9 @@ function renderGoals() {
 function renderConfig() {
   renderRecurringList();
   renderCategoryLists();
+  renderAccountsConfig();
+  renderNotifSection();
+  renderFamilySection();
 }
 
 function renderRecurringList() {
@@ -1449,6 +1496,7 @@ async function requestNotificationPermission() {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') checkAndNotify();
   }
+  return Notification.permission;
 }
 
 function checkAndNotify() {
@@ -1476,6 +1524,244 @@ function checkAndNotify() {
         });
       }
     });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CONTAS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function openAccountModal(id = null) {
+  editingAccountId = id;
+  const acc = id ? (state.accounts || []).find(a => a.id === id) : null;
+  document.getElementById('accountModalTitle').textContent = id ? 'Editar conta' : 'Nova conta';
+  document.getElementById('account-icon').value    = acc ? (acc.icon    || '💳')  : '💳';
+  document.getElementById('account-name').value    = acc ? (acc.name    || '')    : '';
+  document.getElementById('account-initial').value = acc ? (acc.initialBalance != null ? acc.initialBalance : '') : '';
+  document.getElementById('accountModal').classList.add('open');
+}
+
+function saveAccount() {
+  const icon    = document.getElementById('account-icon').value.trim()    || '💳';
+  const name    = document.getElementById('account-name').value.trim();
+  const initial = parseFloat(document.getElementById('account-initial').value) || 0;
+  if (!name) { showToast('Digite o nome da conta'); return; }
+  if (!state.accounts) state.accounts = [];
+  if (editingAccountId) {
+    const idx = state.accounts.findIndex(a => a.id === editingAccountId);
+    if (idx >= 0) state.accounts[idx] = { ...state.accounts[idx], icon, name, initialBalance: initial };
+  } else {
+    state.accounts.push({ id: Date.now().toString(), icon, name, initialBalance: initial });
+  }
+  editingAccountId = null;
+  closeModal('accountModal');
+  saveData();
+  renderAccountBalances();
+  renderAccountsConfig();
+  populateAccountSelect();
+  showToast('Conta salva');
+}
+
+function deleteAccount(id) {
+  if (!confirm('Remover esta conta? Transações vinculadas ficam sem conta.')) return;
+  state.accounts = (state.accounts || []).filter(a => a.id !== id);
+  saveData();
+  renderAccountBalances();
+  renderAccountsConfig();
+  populateAccountSelect();
+  showToast('Conta removida');
+}
+
+function populateAccountSelect() {
+  const sel = document.getElementById('tx-account');
+  if (!sel) return;
+  const accounts = state.accounts || [];
+  const field    = document.getElementById('tx-account-field');
+  if (field) field.style.display = accounts.length ? '' : 'none';
+  sel.innerHTML  = '<option value="">Sem conta específica</option>' +
+    accounts.map(a => `<option value="${a.id}">${a.icon} ${a.name}</option>`).join('');
+}
+
+function renderAccountBalances() {
+  const accounts = state.accounts || [];
+  const section  = document.getElementById('accountsSection');
+  const scroll   = document.getElementById('accountsScroll');
+  if (!section || !scroll) return;
+  if (!accounts.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  scroll.innerHTML = accounts.map(acc => {
+    const income  = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'income') .reduce((s, t) => s + t.amount, 0);
+    const expense = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const balance = (acc.initialBalance || 0) + income - expense;
+    const cls     = balance >= 0 ? 'positive' : 'negative';
+    return `<div class="account-card" onclick="openAccountModal('${acc.id}')">
+      <div class="account-card-icon">${acc.icon}</div>
+      <div class="account-card-name">${acc.name}</div>
+      <div class="account-card-balance ${cls}">${fmt(balance)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderAccountsConfig() {
+  const accounts  = state.accounts || [];
+  const container = document.getElementById('accountsConfigList');
+  if (!container) return;
+  if (!accounts.length) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🏦</div>Nenhuma conta cadastrada<br><br>
+      <button class="btn btn-primary" onclick="openAccountModal()">Adicionar primeira conta</button></div>`;
+    return;
+  }
+  container.innerHTML = accounts.map(acc => {
+    const income  = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'income') .reduce((s, t) => s + t.amount, 0);
+    const expense = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const balance = (acc.initialBalance || 0) + income - expense;
+    const cls     = balance >= 0 ? 'income' : 'expense';
+    return `<div class="recurring-item">
+      <div class="tx-icon" style="background:var(--blue-bg);font-size:18px">${acc.icon}</div>
+      <div class="recurring-info">
+        <div class="recurring-desc">${acc.name}</div>
+        <div class="recurring-meta">Saldo: <span class="${cls}" style="font-weight:600">${fmt(balance)}</span></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openAccountModal('${acc.id}')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="tx-delete" style="opacity:1" onclick="deleteAccount('${acc.id}')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTIFICAÇÕES — seção em Config
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderNotifSection() {
+  const container = document.getElementById('notifSection');
+  if (!container) return;
+  if (!('Notification' in window)) {
+    container.innerHTML = `<div style="padding:1rem;font-size:13px;color:var(--muted)">Seu navegador não suporta notificações push.</div>`;
+    return;
+  }
+  const perm  = Notification.permission;
+  const icon  = perm === 'granted' ? '🔔' : '🔕';
+  const label = perm === 'granted' ? 'Notificações ativas' : perm === 'denied' ? 'Notificações bloqueadas' : 'Notificações desativadas';
+  const desc  = perm === 'granted'
+    ? 'Alertas de vencimentos e orçamentos ativados.'
+    : perm === 'denied'
+    ? 'Desbloqueie nas configurações do navegador/celular.'
+    : 'Ative para receber alertas de vencimentos e orçamentos.';
+  container.innerHTML = `<div style="padding:1rem">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:${perm !== 'granted' && perm !== 'denied' ? '12px' : '0'}">
+      <span style="font-size:26px">${icon}</span>
+      <div>
+        <div style="font-weight:600;font-size:14px">${label}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${desc}</div>
+      </div>
+    </div>
+    ${perm !== 'granted' && perm !== 'denied'
+      ? `<button class="btn btn-primary btn-full" onclick="requestNotificationPermission().then(()=>renderNotifSection())">Ativar notificações</button>`
+      : ''}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODO FAMÍLIA
+// ══════════════════════════════════════════════════════════════════════════════
+
+function generateInviteCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function renderFamilySection() {
+  const container = document.getElementById('familySection');
+  if (!container) return;
+  if (currentFamilyCode) {
+    const isOwner = localStorage.getItem('giwallet_family_owner') === 'true';
+    container.innerHTML = `<div style="padding:1rem">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <span style="font-size:26px">👨‍👩‍👧</span>
+        <div>
+          <div style="font-weight:600;font-size:14px">Modo família ativo</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Dados compartilhados em tempo real</div>
+        </div>
+      </div>
+      ${isOwner ? `<div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;text-align:center">Código para convidar alguém</div>
+        <div style="font-size:26px;font-weight:800;letter-spacing:6px;color:var(--blue);text-align:center;background:var(--blue-bg);padding:14px;border-radius:14px">${currentFamilyCode}</div>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">Compartilhe este código com sua família</div>
+      </div>` : `<div style="margin-bottom:16px;text-align:center;font-size:13px;color:var(--muted)">
+        Você entrou no grupo com código <strong>${currentFamilyCode}</strong>
+      </div>`}
+      <button class="btn btn-ghost btn-full" onclick="leaveFamily()" style="color:var(--red);border-color:var(--red)">
+        Sair do grupo familiar
+      </button>
+    </div>`;
+  } else {
+    container.innerHTML = `<div style="padding:1rem">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        Compartilhe suas finanças com alguém em tempo real. Perfeito para casais e famílias.
+      </p>
+      <button class="btn btn-primary btn-full" onclick="openFamilyModal()">Configurar modo família</button>
+    </div>`;
+  }
+}
+
+function openFamilyModal() {
+  const input = document.getElementById('family-code-input');
+  if (input) input.value = '';
+  document.getElementById('familyModal').classList.add('open');
+}
+
+async function createFamily() {
+  const code = generateInviteCode();
+  setSyncing(true);
+  try {
+    // copia dados atuais para o documento da família
+    await db.collection(COLLECTION).doc('family_' + code).set(state);
+    currentFamilyCode = code;
+    localStorage.setItem('giwallet_family',       code);
+    localStorage.setItem('giwallet_family_owner', 'true');
+    closeModal('familyModal');
+    restartDataSync();
+    renderFamilySection();
+    showToast('Grupo criado! Código: ' + code);
+  } catch (e) {
+    console.error(e);
+    showToast('Erro ao criar grupo');
+  }
+  setSyncing(false);
+}
+
+async function joinFamily() {
+  const input = document.getElementById('family-code-input');
+  const code  = (input ? input.value : '').trim().toUpperCase();
+  if (!code) { showToast('Digite o código de convite'); return; }
+  setSyncing(true);
+  try {
+    const doc = await db.collection(COLLECTION).doc('family_' + code).get();
+    if (!doc.exists) { showToast('Código inválido ou grupo não encontrado'); setSyncing(false); return; }
+    currentFamilyCode = code;
+    localStorage.setItem('giwallet_family', code);
+    localStorage.removeItem('giwallet_family_owner');
+    closeModal('familyModal');
+    restartDataSync();
+    renderFamilySection();
+    showToast('✅ Conectado ao grupo familiar!');
+  } catch (e) {
+    console.error(e);
+    showToast('Erro ao entrar no grupo');
+  }
+  setSyncing(false);
+}
+
+function leaveFamily() {
+  if (!confirm('Sair do grupo familiar?\n\nSeus dados voltarão a ser individuais.')) return;
+  currentFamilyCode = null;
+  localStorage.removeItem('giwallet_family');
+  localStorage.removeItem('giwallet_family_owner');
+  restartDataSync();
+  renderFamilySection();
+  showToast('Saiu do grupo familiar');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

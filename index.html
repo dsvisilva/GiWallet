@@ -184,6 +184,9 @@
   <!-- Dashboard -->
   <div id="tab-dashboard">
     <div class="summary-grid" id="summaryCards"></div>
+    <div id="accountsSection" style="display:none">
+      <div class="accounts-scroll" id="accountsScroll"></div>
+    </div>
     <div class="section" id="comparisonSection">
       <div class="section-header"><span class="section-title">Comparação mensal</span></div>
       <div id="comparisonBody"></div>
@@ -298,6 +301,13 @@
   <div id="tab-config" style="display:none">
     <div class="section">
       <div class="section-header">
+        <span class="section-title">Minhas contas</span>
+        <button class="btn btn-primary btn-sm" onclick="openAccountModal()">+ Nova conta</button>
+      </div>
+      <div id="accountsConfigList"></div>
+    </div>
+    <div class="section">
+      <div class="section-header">
         <span class="section-title">Transações recorrentes</span>
         <button class="btn btn-primary btn-sm" onclick="openRecurringModal()">+ Adicionar</button>
       </div>
@@ -316,6 +326,14 @@
         <button class="btn btn-primary btn-sm" onclick="openCategoryModal('expense')">+ Nova</button>
       </div>
       <div id="catExpenseList"></div>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-title">Notificações</span></div>
+      <div id="notifSection"></div>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-title">Modo família 👨‍👩‍👧</span></div>
+      <div id="familySection"></div>
     </div>
   </div>
 
@@ -348,6 +366,10 @@
       <div class="field"><label>Valor (R$)</label><input type="number" id="tx-amount" placeholder="0,00" step="0.01" min="0"></div>
       <div class="field"><label>Categoria</label><select id="tx-cat"><option value="">Selecione...</option></select></div>
       <div class="field"><label>Data</label><input type="date" id="tx-date"></div>
+      <div class="field" id="tx-account-field" style="display:none">
+        <label>Conta</label>
+        <select id="tx-account"><option value="">Sem conta específica</option></select>
+      </div>
       <div class="field">
         <label class="check-label">
           <input type="checkbox" id="tx-is-installment" onchange="toggleInstallmentField()">
@@ -497,6 +519,59 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('categoryModal')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveCustomCategory()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Conta bancária / carteira -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="accountModalTitle">Nova conta</span>
+      <button class="modal-close" onclick="closeModal('accountModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:60px 1fr;gap:10px">
+        <div class="field"><label>Ícone</label><input type="text" id="account-icon" placeholder="💳" maxlength="2" style="text-align:center;font-size:22px"></div>
+        <div class="field"><label>Nome da conta</label><input type="text" id="account-name" placeholder="Ex: Nubank, Dinheiro..."></div>
+      </div>
+      <div class="field"><label>Saldo inicial (R$)</label><input type="number" id="account-initial" placeholder="0,00" step="0.01"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('accountModal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveAccount()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modo família -->
+<div class="modal-overlay" id="familyModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Modo família 👨‍👩‍👧</span>
+      <button class="modal-close" onclick="closeModal('familyModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        Compartilhe suas finanças com alguém em tempo real. Ambos precisam estar com o GiWallet aberto.
+      </p>
+      <button class="btn btn-primary btn-full" onclick="createFamily()" style="margin-bottom:16px">
+        ✨ Criar grupo familiar
+      </button>
+      <div class="auth-divider"><span>ou entre com um código</span></div>
+      <div class="field" style="margin-top:16px">
+        <label>Código de convite</label>
+        <input type="text" id="family-code-input" placeholder="ABC123" maxlength="8"
+          style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-size:22px;font-weight:700">
+      </div>
+      <button class="btn btn-ghost btn-full" onclick="joinFamily()">Entrar no grupo</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('familyModal')">Fechar</button>
     </div>
   </div>
 </div>
