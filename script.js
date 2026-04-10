@@ -266,7 +266,7 @@ function startSync() {
         state = remote;
         applyTheme();
         renderAll();
-        if (syncReady) showToast('📡 Sincronizado com outro dispositivo!');
+        if (syncReady) showToast('Sincronizado com outro dispositivo');
       }
     } else {
       saveData();
@@ -278,7 +278,7 @@ function startSync() {
   }, err => {
     console.error(err);
     setSyncing(false, true);
-    showToast('❌ Erro de sincronização');
+    showToast('Erro de sincronização');
   });
 }
 
@@ -288,7 +288,7 @@ async function saveData() {
   setSyncing(true);
   try {
     await db.collection(COLLECTION).doc(syncKey).set(state);
-  } catch (e) { showToast('❌ Erro ao salvar'); }
+  } catch (e) { showToast('Erro ao salvar'); }
   isWriting = false;
   setTimeout(() => setSyncing(false), 600);
 }
@@ -370,8 +370,14 @@ function toggleTheme() {
 }
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme || 'light');
-  const btn = document.querySelector('[onclick="toggleTheme()"]');
-  if (btn) btn.textContent = state.theme === 'dark' ? '☀️' : '🌙';
+  const label = document.getElementById('themeLabel');
+  if (label) label.textContent = state.theme === 'dark' ? 'Tema claro' : 'Tema escuro';
+  const icon = document.getElementById('themeIcon');
+  if (icon && state.theme === 'dark') {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  } else if (icon) {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  }
 }
 
 // ── Sync status ───────────────────────────────────────────────────────────────
@@ -464,7 +470,7 @@ function saveTransaction() {
   const isInstall  = document.getElementById('tx-is-installment')?.checked;
   const numInstall = parseInt(document.getElementById('tx-installments')?.value) || 1;
 
-  if (!desc || !amount || amount <= 0 || !cat || !date) { showToast('⚠️ Preencha todos os campos'); return; }
+  if (!desc || !amount || amount <= 0 || !cat || !date) { showToast('Preencha todos os campos'); return; }
 
   if (isInstall && numInstall >= 2) {
     const baseDate = new Date(date + 'T00:00:00');
@@ -480,10 +486,10 @@ function saveTransaction() {
         date:   d.toISOString().slice(0, 10),
       });
     }
-    showToast(`✅ ${numInstall}x de ${fmt(parcela)} criadas!`);
+    showToast(`${numInstall}x de ${fmt(parcela)} criadas`);
   } else {
     state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date });
-    showToast('✅ Transação salva!');
+    showToast('Transação salva');
   }
 
   state.transactions.sort((a, b) => b.date.localeCompare(a.date));
@@ -496,7 +502,7 @@ function deleteTransaction(id) {
   if (!confirm('Remover esta transação?')) return;
   state.transactions = state.transactions.filter(t => t.id !== id);
   saveData(); renderAll();
-  showToast('🗑️ Transação removida');
+  showToast('Transação removida');
 }
 
 // ── Alertas de orçamento ──────────────────────────────────────────────────────
@@ -515,9 +521,9 @@ function checkBudgetAlerts() {
     const pct   = (spent / limit) * 100;
     const info  = getCatInfo(cat);
     if (spent > limit) {
-      showToast(`🚨 ${info.label}: limite ultrapassado!`);
+      showToast(`${info.label}: limite ultrapassado`);
     } else if (pct >= threshold) {
-      showToast(`⚡ ${info.label}: ${pct.toFixed(0)}% do orçamento usado`);
+      showToast(`${info.label}: ${pct.toFixed(0)}% do limite`);
     }
   });
 }
@@ -540,18 +546,18 @@ function openBudgetModal() {
 function saveBudget() {
   const cat    = document.getElementById('budget-cat').value;
   const amount = parseFloat(document.getElementById('budget-amount').value);
-  if (!cat || !amount || amount <= 0) { showToast('⚠️ Preencha os campos'); return; }
+  if (!cat || !amount || amount <= 0) { showToast('Preencha os campos'); return; }
   state.budgets[cat] = amount;
   closeModal('budgetModal');
   saveData(); renderBudgets();
-  showToast('✅ Orçamento definido!');
+  showToast('Orçamento definido');
 }
 
 function deleteBudget(cat) {
   if (!confirm('Remover este orçamento?')) return;
   delete state.budgets[cat];
   saveData(); renderBudgets();
-  showToast('🗑️ Orçamento removido');
+  showToast('Orçamento removido');
 }
 
 // ── Metas financeiras ─────────────────────────────────────────────────────────
@@ -575,7 +581,7 @@ function saveGoal() {
   const saved    = parseFloat(document.getElementById('goal-saved').value)  || 0;
   const deadline = document.getElementById('goal-deadline').value;
 
-  if (!name || !target || target <= 0) { showToast('⚠️ Preencha nome e valor da meta'); return; }
+  if (!name || !target || target <= 0) { showToast('Preencha nome e valor da meta'); return; }
 
   if (!state.goals) state.goals = [];
   if (editingGoalId) {
@@ -586,14 +592,14 @@ function saveGoal() {
   }
   closeModal('goalModal');
   saveData(); renderGoals();
-  showToast('✅ Meta salva!');
+  showToast('Meta salva');
 }
 
 function deleteGoal(id) {
   if (!confirm('Remover esta meta?')) return;
   state.goals = (state.goals || []).filter(g => g.id !== id);
   saveData(); renderGoals();
-  showToast('🗑️ Meta removida');
+  showToast('Meta removida');
 }
 
 function openGoalContrib(id) {
@@ -608,7 +614,7 @@ function openGoalContrib(id) {
 
 function applyGoalContrib() {
   const amount = parseFloat(document.getElementById('goal-contrib').value);
-  if (!amount || amount <= 0) { showToast('⚠️ Digite um valor válido'); return; }
+  if (!amount || amount <= 0) { showToast('Digite um valor válido'); return; }
   const goal = (state.goals || []).find(g => g.id === goalContribId);
   if (!goal) return;
   goal.saved = (goal.saved || 0) + amount;
@@ -677,7 +683,7 @@ function saveRecurring() {
   const month  = parseInt(document.getElementById('rec-month').value) || 1;
   const start  = document.getElementById('rec-start').value;
 
-  if (!desc || !amount || amount <= 0 || !cat || !start) { showToast('⚠️ Preencha todos os campos'); return; }
+  if (!desc || !amount || amount <= 0 || !cat || !start) { showToast('Preencha todos os campos'); return; }
 
   if (!state.recurringTransactions) state.recurringTransactions = [];
   state.recurringTransactions.push({
@@ -688,7 +694,7 @@ function saveRecurring() {
   });
   closeModal('recurringModal');
   saveData(); renderConfig();
-  showToast('✅ Transação recorrente criada!');
+  showToast('Transação recorrente criada');
 }
 
 function toggleRecurring(id) {
@@ -702,7 +708,7 @@ function deleteRecurring(id) {
   if (!confirm('Remover esta transação recorrente?')) return;
   state.recurringTransactions = (state.recurringTransactions || []).filter(r => r.id !== id);
   saveData(); renderConfig();
-  showToast('🗑️ Recorrente removida');
+  showToast('Recorrente removida');
 }
 
 function processRecurringTransactions() {
@@ -745,7 +751,7 @@ function processRecurringTransactions() {
       state.transactions.push({
         id:          Date.now().toString() + '_' + Math.random().toString(36).slice(2),
         type:        r.type,
-        desc:        r.desc + ' 🔁',
+        desc:        r.desc,
         amount:      r.amount,
         cat:         r.cat,
         date:        today,
@@ -759,7 +765,7 @@ function processRecurringTransactions() {
   if (changed) {
     state.transactions.sort((a, b) => b.date.localeCompare(a.date));
     saveData(); renderAll();
-    showToast('🔁 Transações recorrentes geradas!');
+    showToast('Transações recorrentes atualizadas');
   }
 }
 
@@ -786,7 +792,7 @@ function openCategoryModal(type) {
 function saveCustomCategory() {
   const icon = document.getElementById('cat-icon').value.trim() || '📌';
   const name = document.getElementById('cat-name').value.trim();
-  if (!name) { showToast('⚠️ Digite o nome da categoria'); return; }
+  if (!name) { showToast('Digite o nome da categoria'); return; }
 
   if (!state.customCategories) state.customCategories = { income: [], expense: [] };
   if (!state.customCategories[editingCatType]) state.customCategories[editingCatType] = [];
@@ -795,14 +801,14 @@ function saveCustomCategory() {
   state.customCategories[editingCatType].push({ id, label: name, icon });
   closeModal('categoryModal');
   saveData(); renderConfig();
-  showToast('✅ Categoria criada!');
+  showToast('Categoria criada');
 }
 
 function deleteCustomCategory(type, id) {
   if (!confirm('Remover esta categoria?')) return;
   state.customCategories[type] = (state.customCategories[type] || []).filter(c => c.id !== id);
   saveData(); renderConfig();
-  showToast('🗑️ Categoria removida');
+  showToast('Categoria removida');
 }
 
 // ── Exportação CSV ────────────────────────────────────────────────────────────
@@ -834,7 +840,7 @@ function exportCSV() {
   a.download = `financas-${todayStr()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('⬇️ CSV exportado!');
+  showToast('CSV exportado');
 }
 
 // ── Renderização ──────────────────────────────────────────────────────────────
@@ -1191,7 +1197,7 @@ function txHTML(t) {
       <div class="tx-meta">${cat.label} · ${d}</div>
     </div>
     <div class="tx-amount ${t.type}">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</div>
-    <button class="tx-delete" onclick="deleteTransaction('${t.id}')">🗑</button>
+    <button class="tx-delete" onclick="deleteTransaction('${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
   </li>`;
 }
 
@@ -1267,17 +1273,17 @@ function renderBudgets() {
 
     return `<div class="budget-item">
       <div class="budget-top">
-        <div class="budget-name">${info.icon} ${info.label} ${over ? '🚨' : warn ? '⚡' : ''}</div>
+        <div class="budget-name">${info.icon} ${info.label}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="budget-values" style="color:${color};font-weight:600">${fmt(spent)} / ${fmt(limit)}</div>
-          <button class="btn btn-ghost btn-sm" onclick="deleteBudget('${cat}')">🗑</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteBudget('${cat}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
         </div>
       </div>
       <div class="budget-bar-track">
         <div class="budget-bar-fill" style="width:${pct}%;background:${color}"></div>
       </div>
-      ${over ? `<div class="budget-warning">⚠️ Ultrapassado em ${fmt(spent - limit)}</div>` : ''}
-      ${warn && !over ? `<div class="budget-warning" style="color:var(--amber)">⚡ ${pct.toFixed(0)}% do limite usado</div>` : ''}
+      ${over ? `<div class="budget-warning">Ultrapassado em ${fmt(spent - limit)}</div>` : ''}
+      ${warn && !over ? `<div class="budget-warning" style="color:var(--amber)">${pct.toFixed(0)}% do limite atingido</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1311,7 +1317,7 @@ function renderGoals() {
       <div class="goal-top">
         <div class="goal-icon-circle">${g.icon || '🎯'}</div>
         <div class="goal-info">
-          <div class="goal-name">${g.name} ${done ? '✅' : ''}</div>
+          <div class="goal-name">${g.name}${done ? ' · Concluída' : ''}</div>
           <div class="goal-deadline">${deadline ? `Prazo: ${deadline}` : ''} ${daysLeft ? `· ${daysLeft}` : ''}</div>
         </div>
         <div class="goal-amounts">
@@ -1325,9 +1331,9 @@ function renderGoals() {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
         <span style="font-size:12px;color:var(--muted)">${pct.toFixed(0)}% concluído</span>
         <div class="goal-actions">
-          <button class="btn btn-primary btn-sm" onclick="openGoalContrib('${g.id}')">💰 Adicionar</button>
-          <button class="btn btn-ghost btn-sm"   onclick="openGoalModal('${g.id}')">✏️</button>
-          <button class="btn btn-ghost btn-sm"   onclick="deleteGoal('${g.id}')">🗑</button>
+          <button class="btn btn-primary btn-sm" onclick="openGoalContrib('${g.id}')">Adicionar</button>
+          <button class="btn btn-ghost btn-sm"   onclick="openGoalModal('${g.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+          <button class="btn btn-ghost btn-sm"   onclick="deleteGoal('${g.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
         </div>
       </div>
     </div>`;
@@ -1366,7 +1372,7 @@ function renderRecurringList() {
       </div>
       <div class="recurring-amount ${color}">${sign}${fmt(r.amount)}</div>
       <div class="toggle ${r.active ? 'on' : ''}" onclick="toggleRecurring('${r.id}')" title="${r.active ? 'Ativa' : 'Pausada'}"></div>
-      <button class="tx-delete" style="opacity:1" onclick="deleteRecurring('${r.id}')">🗑</button>
+      <button class="tx-delete" style="opacity:1" onclick="deleteRecurring('${r.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
     </div>`;
   }).join('');
 }
@@ -1380,7 +1386,7 @@ function renderCategoryLists() {
       <div class="cat-row-label">${c.label}</div>
       ${isDefault
         ? '<span class="cat-row-badge">padrão</span>'
-        : `<button class="btn btn-ghost btn-sm" onclick="deleteCustomCategory('${type}','${c.id}')">🗑</button>`}
+        : `<button class="btn btn-ghost btn-sm" onclick="deleteCustomCategory('${type}','${c.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`}
     </div>`;
   }
 

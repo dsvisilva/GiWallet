@@ -1,4 +1,4 @@
-const CACHE_NAME = 'giwallet-v3'; // bumped — força recarga no celular
+const CACHE_NAME = 'giwallet-v4'; // redesign profissional — force reload
 
 const ASSETS = [
   './',

@@ -7,7 +7,7 @@
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#3b82f6">
+  <meta name="theme-color" content="#2563eb">
 
   <!-- iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,10 +31,7 @@
       <p class="login-sub">Controle suas finanças com segurança</p>
     </div>
 
-    <!-- Formulário de login / cadastro -->
     <div id="loginFormWrap">
-
-      <!-- Abas -->
       <div class="auth-tabs">
         <button class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">Entrar</button>
         <button class="auth-tab" id="tabRegister" onclick="switchAuthTab('register')">Criar conta</button>
@@ -56,10 +53,7 @@
       <div id="authError" class="auth-error"></div>
 
       <button class="btn btn-primary btn-full" id="authSubmitBtn" onclick="submitAuth()">Entrar</button>
-
-      <button class="auth-link" id="forgotBtn" onclick="forgotPassword()" style="display:block">
-        Esqueci minha senha
-      </button>
+      <button class="auth-link" id="forgotBtn" onclick="forgotPassword()" style="display:block">Esqueci minha senha</button>
 
       <div class="auth-divider"><span>ou</span></div>
 
@@ -72,10 +66,8 @@
         </svg>
         Continuar com Google
       </button>
-
     </div>
 
-    <!-- Tela de recuperação de senha -->
     <div id="resetFormWrap" style="display:none">
       <button class="auth-back" onclick="showLoginForm()">← Voltar</button>
       <h2 style="font-size:18px;font-weight:700;margin-bottom:6px">Recuperar senha</h2>
@@ -94,20 +86,26 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     APP PRINCIPAL (oculto até autenticar)
+     APP PRINCIPAL
 ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="appRoot" style="display:none">
 
-<!-- ─── Header ──────────────────────────────────────────────────────────────── -->
+<!-- ─── Header ─────────────────────────────────────────────────────────────── -->
 <div class="header">
-  <div class="logo"><span>💰</span> GiWallet</div>
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+      <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
+    </svg>
+    GiWallet
+  </div>
   <div class="header-actions">
     <div class="sync-status" id="syncBadge">
       <div class="sync-dot" id="syncDot"></div>
       <span id="syncText">Sincronizando...</span>
     </div>
     <div class="user-avatar" id="userAvatar" onclick="toggleUserMenu()" title="Conta"></div>
-    <button class="icon-btn" onclick="toggleTheme()" title="Tema">🌙</button>
   </div>
 </div>
 
@@ -117,20 +115,63 @@
     <div class="user-menu-name" id="menuUserName"></div>
     <div class="user-menu-email" id="menuUserEmail"></div>
   </div>
-  <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-  <button class="user-menu-item" onclick="logout()">🚪 Sair da conta</button>
+  <hr class="menu-divider">
+  <button class="user-menu-item" onclick="toggleTheme()">
+    <svg class="menu-icon" id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <span id="themeLabel">Tema escuro</span>
+  </button>
+  <button class="user-menu-item user-menu-logout" onclick="logout()">
+    <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    Sair da conta
+  </button>
 </div>
 
-<!-- ─── Nav ─────────────────────────────────────────────────────────────────── -->
+<!-- ─── Nav ──────────────────────────────────────────────────────────────────── -->
 <div class="nav">
-  <div class="nav-item active" data-tab="dashboard"    onclick="showTab('dashboard',this)">Visão Geral</div>
-  <div class="nav-item"        data-tab="transactions" onclick="showTab('transactions',this)">Transações</div>
-  <div class="nav-item"        data-tab="budgets"      onclick="showTab('budgets',this)">Orçamentos</div>
-  <div class="nav-item"        data-tab="goals"        onclick="showTab('goals',this)">Metas</div>
-  <div class="nav-item"        data-tab="config"       onclick="showTab('config',this)">Config</div>
+  <div class="nav-item active" data-tab="dashboard" onclick="showTab('dashboard',this)">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+    </svg>
+    <span>Início</span>
+  </div>
+  <div class="nav-item" data-tab="transactions" onclick="showTab('transactions',this)">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+    </svg>
+    <span>Transações</span>
+  </div>
+  <div class="nav-item" data-tab="budgets" onclick="showTab('budgets',this)">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+    </svg>
+    <span>Orçamentos</span>
+  </div>
+  <div class="nav-item" data-tab="goals" onclick="showTab('goals',this)">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+    </svg>
+    <span>Metas</span>
+  </div>
+  <div class="nav-item" data-tab="config" onclick="showTab('config',this)">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+    <span>Config</span>
+  </div>
 </div>
 
-<!-- ─── Conteúdo ─────────────────────────────────────────────────────────────── -->
+<!-- ─── Conteúdo ──────────────────────────────────────────────────────────────── -->
 <div class="main">
 
   <!-- Dashboard -->
@@ -141,21 +182,27 @@
       <div id="comparisonBody"></div>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-title">Receitas e Despesas (últimos 6 meses)</span></div>
+      <div class="section-header"><span class="section-title">Receitas e Despesas</span></div>
       <div class="chart-wrap" id="monthlyChartWrap">
         <canvas id="monthlyChart"></canvas>
         <div class="chart-empty" id="monthlyChartEmpty" style="display:none">
-          <div class="empty-icon">📊</div>Nenhum dado ainda
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--muted);margin-bottom:8px">
+            <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          Nenhum dado ainda
         </div>
       </div>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-title">Gastos por categoria (este mês)</span></div>
+      <div class="section-header"><span class="section-title">Gastos por categoria</span></div>
       <div id="pieChartSection">
         <div class="chart-wrap chart-wrap-pie">
           <canvas id="pieChart"></canvas>
           <div class="chart-empty" id="pieChartEmpty" style="display:none">
-            <div class="empty-icon">🍩</div>Sem despesas este mês
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--muted);margin-bottom:8px">
+              <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+            </svg>
+            Sem despesas este mês
           </div>
         </div>
         <div id="pieLegend" class="pie-legend"></div>
@@ -183,7 +230,7 @@
       <div class="section-header">
         <span class="section-title">Todas as transações</span>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">Exportar CSV</button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Adicionar</button>
         </div>
       </div>
@@ -240,21 +287,21 @@
   <div id="tab-config" style="display:none">
     <div class="section">
       <div class="section-header">
-        <span class="section-title">🔁 Transações recorrentes</span>
+        <span class="section-title">Transações recorrentes</span>
         <button class="btn btn-primary btn-sm" onclick="openRecurringModal()">+ Adicionar</button>
       </div>
       <div id="recurringList"></div>
     </div>
     <div class="section">
       <div class="section-header">
-        <span class="section-title">🏷️ Categorias de Receita</span>
+        <span class="section-title">Categorias de Receita</span>
         <button class="btn btn-primary btn-sm" onclick="openCategoryModal('income')">+ Nova</button>
       </div>
       <div id="catIncomeList"></div>
     </div>
     <div class="section">
       <div class="section-header">
-        <span class="section-title">🏷️ Categorias de Despesa</span>
+        <span class="section-title">Categorias de Despesa</span>
         <button class="btn btn-primary btn-sm" onclick="openCategoryModal('expense')">+ Nova</button>
       </div>
       <div id="catExpenseList"></div>
@@ -268,19 +315,22 @@
      MODAIS
 ═══════════════════════════════════════════════════════════════════════════ -->
 
+<!-- SVG close button reutilizável via JS -->
 <!-- Nova transação -->
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title">Nova transação</span>
-      <button class="icon-btn" onclick="closeModal('addModal')">✕</button>
+      <button class="modal-close" onclick="closeModal('addModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div class="field">
         <label>Tipo</label>
         <div class="type-toggle">
-          <button class="type-btn active-income" id="btn-income"  onclick="setType('income')">+ Receita</button>
-          <button class="type-btn"               id="btn-expense" onclick="setType('expense')">− Despesa</button>
+          <button class="type-btn active-income" id="btn-income"  onclick="setType('income')">Receita</button>
+          <button class="type-btn"               id="btn-expense" onclick="setType('expense')">Despesa</button>
         </div>
       </div>
       <div class="field"><label>Descrição</label><input type="text" id="tx-desc" placeholder="Ex: Salário, Mercado..."></div>
@@ -310,7 +360,9 @@
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title">Definir orçamento mensal</span>
-      <button class="icon-btn" onclick="closeModal('budgetModal')">✕</button>
+      <button class="modal-close" onclick="closeModal('budgetModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div class="field"><label>Categoria</label><select id="budget-cat"></select></div>
@@ -328,7 +380,9 @@
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title" id="goalModalTitle">Nova meta</span>
-      <button class="icon-btn" onclick="closeModal('goalModal')">✕</button>
+      <button class="modal-close" onclick="closeModal('goalModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div style="display:grid;grid-template-columns:60px 1fr;gap:10px">
@@ -351,7 +405,9 @@
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title">Adicionar à meta</span>
-      <button class="icon-btn" onclick="closeModal('goalContribModal')">✕</button>
+      <button class="modal-close" onclick="closeModal('goalContribModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div class="field"><label id="goalContribLabel">Valor a guardar (R$)</label><input type="number" id="goal-contrib" placeholder="0,00" step="0.01" min="0"></div>
@@ -368,14 +424,16 @@
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title">Transação recorrente</span>
-      <button class="icon-btn" onclick="closeModal('recurringModal')">✕</button>
+      <button class="modal-close" onclick="closeModal('recurringModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div class="field">
         <label>Tipo</label>
         <div class="type-toggle">
-          <button class="type-btn active-income" id="rec-btn-income"  onclick="setRecType('income')">+ Receita</button>
-          <button class="type-btn"               id="rec-btn-expense" onclick="setRecType('expense')">− Despesa</button>
+          <button class="type-btn active-income" id="rec-btn-income"  onclick="setRecType('income')">Receita</button>
+          <button class="type-btn"               id="rec-btn-expense" onclick="setRecType('expense')">Despesa</button>
         </div>
       </div>
       <div class="field"><label>Descrição</label><input type="text" id="rec-desc" placeholder="Ex: Salário, Netflix..."></div>
@@ -415,7 +473,9 @@
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title" id="categoryModalTitle">Nova categoria</span>
-      <button class="icon-btn" onclick="closeModal('categoryModal')">✕</button>
+      <button class="modal-close" onclick="closeModal('categoryModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
       <div style="display:grid;grid-template-columns:60px 1fr;gap:10px">
@@ -430,13 +490,13 @@
   </div>
 </div>
 
-<!-- ─── Toast ────────────────────────────────────────────────────────────────── -->
+<!-- ─── Toast ─────────────────────────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
 <!-- ─── Chart.js ──────────────────────────────────────────────────────────────── -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 
-<!-- ─── Firebase SDK ─────────────────────────────────────────────────────────── -->
+<!-- ─── Firebase SDK ──────────────────────────────────────────────────────────── -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
