@@ -1,10 +1,11 @@
-const CACHE_NAME = 'giwallet-v2'; // versão atualizada — força limpeza do cache antigo
+const CACHE_NAME = 'giwallet-v3'; // bumped — força recarga no celular
 
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './script.js',
+  './manifest.json',
   './icon-192.png',
   './icon-512.png',
 ];

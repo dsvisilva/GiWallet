@@ -724,17 +724,111 @@ body {
 }
 .user-menu-item:hover { background: var(--red-bg); }
 
-/* ── Mobile ── */
-@media (max-width: 480px) {
-  .summary-grid { grid-template-columns: 1fr 1fr; }
-  .summary-value { font-size: 18px; }
-  .tx-delete { opacity: 1; }
-  .main { padding: 1rem 0.75rem; padding-bottom: calc(1rem + var(--safe-bottom)); }
-  .section-header { padding: 0.75rem 1rem; }
-  .tx-item { padding: 11px 1rem; }
-  .upcoming-item { padding: 11px 1rem; }
+/* ══════════════════════════════════════════════════════════════════════════════
+   MOBILE — Barra de navegação inferior + layout otimizado
+══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* ── Bottom nav bar ── */
+  .nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    top: auto;
+    z-index: 150;
+    padding: 0;
+    padding-bottom: var(--safe-bottom);
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    background: var(--surface);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    overflow: visible;
+  }
+
+  .nav-item {
+    flex-direction: column;
+    height: auto;
+    padding: 8px 4px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    border-bottom: none;
+    border-top: 2px solid transparent;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0;
+  }
+
+  .nav-item.active {
+    border-bottom: none;
+    border-top: 2px solid var(--blue);
+    color: var(--blue);
+  }
+
+  /* Ícones para cada aba via ::before */
+  .nav-item::before {
+    display: block;
+    font-size: 20px;
+    line-height: 1;
+  }
+  .nav-item[data-tab="dashboard"]::before    { content: "📊"; }
+  .nav-item[data-tab="transactions"]::before { content: "💳"; }
+  .nav-item[data-tab="budgets"]::before      { content: "🎯"; }
+  .nav-item[data-tab="goals"]::before        { content: "🏆"; }
+  .nav-item[data-tab="config"]::before       { content: "⚙️"; }
+
+  /* ── Layout geral ── */
+  .main {
+    padding: 1rem 0.875rem;
+    padding-bottom: calc(76px + var(--safe-bottom) + 0.5rem);
+  }
+
+  /* ── Summary cards: 2x2 ── */
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+  .summary-card   { padding: 0.9rem 0.875rem; }
+  .summary-value  { font-size: 18px; }
+  .summary-label  { font-size: 10px; margin-bottom: 6px; }
+  .summary-sub    { font-size: 10px; }
+
+  /* ── Sections ── */
+  .section        { margin-bottom: 0.875rem; }
+  .section-header { padding: 0.875rem 1rem; }
+  .section-title  { font-size: 13px; }
+
+  /* ── Lists ── */
+  .tx-item        { padding: 12px 1rem; }
+  .tx-delete      { opacity: 1; color: var(--muted); }
+  .tx-amount      { font-size: 13px; }
+  .upcoming-item  { padding: 12px 1rem; }
+
+  /* ── Comparison ── */
   .comparison-grid { grid-template-columns: 1fr; }
   .comparison-item { border-right: none; border-bottom: 1px solid var(--border); }
   .comparison-item:last-child { border-bottom: none; }
-  .nav-item { padding: 0 10px; font-size: 12px; }
+
+  /* ── Charts ── */
+  .chart-wrap     { padding: 1rem; }
+  .chart-wrap-pie { max-width: 220px; }
+
+  /* ── User menu ── */
+  .user-menu { right: 0.75rem; min-width: 200px; }
+
+  /* ── Modal ── */
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal {
+    max-width: 100%;
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 90vh;
+    transform: translateY(100%);
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
 }
