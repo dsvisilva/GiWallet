@@ -129,7 +129,8 @@ function logout() {
     state = { transactions: [], budgets: {}, theme: 'light',
               customCategories: { income: [], expense: [] },
               recurringTransactions: [], goals: [], budgetAlertThreshold: 80,
-              onboardingDone: false, accounts: [] };
+              onboardingDone: false, accounts: [],
+              budgetRollover: {}, budgetBonus: {}, lastRolloverMonth: null };
     document.getElementById('userMenu').style.display = 'none';
   });
 }
@@ -217,15 +218,18 @@ const COLLECTION = 'financas';
 // ── Estado global ─────────────────────────────────────────────────────────────
 
 let state = {
-  transactions:         [],
-  budgets:              {},
-  theme:                'light',
-  customCategories:     { income: [], expense: [] },
+  transactions:          [],
+  budgets:               {},
+  theme:                 'light',
+  customCategories:      { income: [], expense: [] },
   recurringTransactions: [],
-  goals:                [],
-  budgetAlertThreshold: 80,
-  onboardingDone:       false,
-  accounts:             [],
+  goals:                 [],
+  budgetAlertThreshold:  80,
+  onboardingDone:        false,
+  accounts:              [],
+  budgetRollover:        {},  // {cat: bool}
+  budgetBonus:           {},  // {cat: number} saldo acumulado de meses anteriores
+  lastRolloverMonth:     null,
 };
 
 let currentType       = 'income';
@@ -296,6 +300,7 @@ function startDataSync() {
     setSyncing(false);
     renderAll();
     processRecurringTransactions();
+    processRollover();
     checkOnboarding();
     requestNotificationPermission();
   }, err => {
@@ -334,6 +339,9 @@ function normalizeState(s) {
     budgetAlertThreshold:  s.budgetAlertThreshold || 80,
     onboardingDone:        s.onboardingDone || false,
     accounts:              Array.isArray(s.accounts) ? s.accounts : [],
+    budgetRollover:        (s.budgetRollover && typeof s.budgetRollover === 'object') ? s.budgetRollover : {},
+    budgetBonus:           (s.budgetBonus   && typeof s.budgetBonus   === 'object') ? s.budgetBonus   : {},
+    lastRolloverMonth:     s.lastRolloverMonth || null,
   };
 }
 
@@ -497,6 +505,9 @@ function openAddModal(id = null) {
   const accSel = document.getElementById('tx-account');
   if (accSel) accSel.value = tx ? (tx.accountId || '') : '';
 
+  document.getElementById('tx-tags').value = tx ? ((tx.tags || []).join(', ')) : '';
+  document.getElementById('tx-note').value = tx ? (tx.note || '') : '';
+
   document.querySelector('#addModal .modal-title').textContent = id ? 'Editar transação' : 'Nova transação';
   document.getElementById('addModal').classList.add('open');
 }
@@ -512,6 +523,9 @@ function saveTransaction() {
   const cat        = document.getElementById('tx-cat').value;
   const date       = document.getElementById('tx-date').value;
   const accountId  = document.getElementById('tx-account')?.value || null;
+  const note       = document.getElementById('tx-note')?.value.trim() || '';
+  const tagsRaw    = document.getElementById('tx-tags')?.value || '';
+  const tags       = tagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
   const isInstall  = document.getElementById('tx-is-installment')?.checked;
   const numInstall = parseInt(document.getElementById('tx-installments')?.value) || 1;
 
@@ -520,7 +534,7 @@ function saveTransaction() {
   if (editingTxId) {
     const idx = state.transactions.findIndex(t => t.id === editingTxId);
     if (idx >= 0) {
-      state.transactions[idx] = { ...state.transactions[idx], type: currentType, desc, amount, cat, date, accountId: accountId || null };
+      state.transactions[idx] = { ...state.transactions[idx], type: currentType, desc, amount, cat, date, accountId: accountId || null, note, tags };
     }
     editingTxId = null;
     showToast('Transação atualizada');
@@ -530,18 +544,14 @@ function saveTransaction() {
     for (let i = 0; i < numInstall; i++) {
       const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
       state.transactions.push({
-        id:        Date.now().toString() + '_p' + i,
-        type:      currentType,
-        desc:      `${desc} (${i + 1}/${numInstall})`,
-        amount:    parcela,
-        cat,
-        date:      d.toISOString().slice(0, 10),
-        accountId: accountId || null,
+        id: Date.now().toString() + '_p' + i, type: currentType,
+        desc: `${desc} (${i + 1}/${numInstall})`, amount: parcela,
+        cat, date: d.toISOString().slice(0, 10), accountId: accountId || null, note, tags,
       });
     }
     showToast(`${numInstall}x de ${fmt(parcela)} criadas`);
   } else {
-    state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date, accountId: accountId || null });
+    state.transactions.push({ id: Date.now().toString(), type: currentType, desc, amount, cat, date, accountId: accountId || null, note, tags });
     showToast('Transação salva');
   }
 
@@ -600,22 +610,27 @@ function saveAlertThreshold() {
 
 // ── Orçamentos ────────────────────────────────────────────────────────────────
 
+function saveBudget() {
+  const cat      = document.getElementById('budget-cat').value;
+  const amount   = parseFloat(document.getElementById('budget-amount').value);
+  const rollover = document.getElementById('budget-rollover')?.checked || false;
+  if (!cat || !amount || amount <= 0) { showToast('Preencha os campos'); return; }
+  state.budgets[cat] = amount;
+  if (!state.budgetRollover) state.budgetRollover = {};
+  state.budgetRollover[cat] = rollover;
+  closeModal('budgetModal');
+  saveData(); renderBudgets();
+  showToast('Orçamento definido');
+}
+
 function openBudgetModal() {
   const cats = getAllCategories().expense;
   document.getElementById('budget-cat').innerHTML =
     cats.map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
   document.getElementById('budget-amount').value = '';
+  const rb = document.getElementById('budget-rollover');
+  if (rb) rb.checked = false;
   document.getElementById('budgetModal').classList.add('open');
-}
-
-function saveBudget() {
-  const cat    = document.getElementById('budget-cat').value;
-  const amount = parseFloat(document.getElementById('budget-amount').value);
-  if (!cat || !amount || amount <= 0) { showToast('Preencha os campos'); return; }
-  state.budgets[cat] = amount;
-  closeModal('budgetModal');
-  saveData(); renderBudgets();
-  showToast('Orçamento definido');
 }
 
 function deleteBudget(cat) {
@@ -913,6 +928,8 @@ function exportCSV() {
 function renderAll() {
   renderSummary();
   renderAccountBalances();
+  renderProjection();
+  renderInsights();
   renderComparison();
   renderChart();
   renderPieChart();
@@ -1253,14 +1270,19 @@ function renderPieChart() {
 // ── Transações recentes ───────────────────────────────────────────────────────
 
 function txHTML(t) {
-  const cat = getCatInfo(t.cat);
-  const d   = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
-  const bg  = t.type === 'income' ? 'var(--green-bg)' : 'var(--red-bg)';
+  const cat  = getCatInfo(t.cat);
+  const d    = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
+  const bg   = t.type === 'income' ? 'var(--green-bg)' : 'var(--red-bg)';
+  const tags = (t.tags || []).map(tag =>
+    `<span class="tx-tag">${tag}</span>`).join('');
+  const note = t.note ? `<div class="tx-note-text">${t.note}</div>` : '';
   return `<li class="tx-item">
     <div class="tx-icon" style="background:${bg}">${cat.icon}</div>
     <div class="tx-info">
       <div class="tx-desc">${t.desc}</div>
       <div class="tx-meta">${cat.label} · ${d}</div>
+      ${tags ? `<div class="tx-tags-row">${tags}</div>` : ''}
+      ${note}
     </div>
     <div class="tx-amount ${t.type}">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</div>
     <button class="tx-edit" onclick="openAddModal('${t.id}')">
@@ -1294,18 +1316,27 @@ function populateFilters() {
       const d = new Date(m + '-01');
       return `<option value="${m}">${d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</option>`;
     }).join('');
+
+  const allTags = [...new Set(txs.flatMap(t => t.tags || []))].sort();
+  const tagSel  = document.getElementById('filterTag');
+  if (tagSel) {
+    tagSel.innerHTML = '<option value="">Todas as tags</option>' +
+      allTags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+  }
 }
 
 function renderTransactions() {
-  const type  = document.getElementById('filterType').value;
-  const cat   = document.getElementById('filterCat').value;
-  const month = document.getElementById('filterMonth').value;
+  const type   = document.getElementById('filterType').value;
+  const cat    = document.getElementById('filterCat').value;
+  const month  = document.getElementById('filterMonth').value;
+  const tag    = document.getElementById('filterTag')?.value || '';
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
   let txs = state.transactions || [];
-  if (type)  txs = txs.filter(t => t.type === type);
-  if (cat)   txs = txs.filter(t => t.cat  === cat);
-  if (month) txs = txs.filter(t => t.date.startsWith(month));
-  if (search) txs = txs.filter(t => t.desc.toLowerCase().includes(search) || getCatInfo(t.cat).label.toLowerCase().includes(search));
+  if (type)   txs = txs.filter(t => t.type === type);
+  if (cat)    txs = txs.filter(t => t.cat  === cat);
+  if (month)  txs = txs.filter(t => t.date.startsWith(month));
+  if (tag)    txs = txs.filter(t => (t.tags || []).includes(tag));
+  if (search) txs = txs.filter(t => t.desc.toLowerCase().includes(search) || getCatInfo(t.cat).label.toLowerCase().includes(search) || (t.note || '').toLowerCase().includes(search));
   document.getElementById('allTxList').innerHTML = txs.length
     ? txs.map(txHTML).join('')
     : '<div class="empty"><div class="empty-icon">🔍</div>Nenhuma transação encontrada</div>';
@@ -1335,25 +1366,32 @@ function renderBudgets() {
   }
 
   container.innerHTML = Object.entries(b).map(([cat, limit]) => {
-    const spent = expenses[cat] || 0;
-    const pct   = Math.min((spent / limit) * 100, 100);
-    const info  = getCatInfo(cat);
-    const over  = spent > limit;
-    const warn  = !over && (spent / limit * 100) >= threshold;
-    const color = over ? 'var(--red)' : warn ? 'var(--amber)' : 'var(--green)';
+    const bonus      = (state.budgetBonus || {})[cat] || 0;
+    const effective  = limit + bonus;
+    const spent      = expenses[cat] || 0;
+    const pct        = Math.min((spent / effective) * 100, 100);
+    const info       = getCatInfo(cat);
+    const rollover   = (state.budgetRollover || {})[cat];
+    const over       = spent > effective;
+    const warn       = !over && (spent / effective * 100) >= threshold;
+    const color      = over ? 'var(--red)' : warn ? 'var(--amber)' : 'var(--green)';
 
     return `<div class="budget-item">
       <div class="budget-top">
-        <div class="budget-name">${info.icon} ${info.label}</div>
+        <div class="budget-name">
+          ${info.icon} ${info.label}
+          ${rollover ? '<span style="font-size:10px;background:var(--blue-bg);color:var(--blue);padding:2px 6px;border-radius:8px;margin-left:4px">rolante</span>' : ''}
+        </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <div class="budget-values" style="color:${color};font-weight:600">${fmt(spent)} / ${fmt(limit)}</div>
+          <div class="budget-values" style="color:${color};font-weight:600">${fmt(spent)} / ${fmt(effective)}</div>
           <button class="btn btn-ghost btn-sm" onclick="deleteBudget('${cat}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
         </div>
       </div>
       <div class="budget-bar-track">
         <div class="budget-bar-fill" style="width:${pct}%;background:${color}"></div>
       </div>
-      ${over ? `<div class="budget-warning">Ultrapassado em ${fmt(spent - limit)}</div>` : ''}
+      ${bonus > 0 ? `<div class="budget-warning" style="color:var(--blue)">+${fmt(bonus)} acumulado de meses anteriores</div>` : ''}
+      ${over ? `<div class="budget-warning">Ultrapassado em ${fmt(spent - effective)}</div>` : ''}
       ${warn && !over ? `<div class="budget-warning" style="color:var(--amber)">${pct.toFixed(0)}% do limite atingido</div>` : ''}
     </div>`;
   }).join('');
@@ -1528,107 +1566,365 @@ function checkAndNotify() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// PROJEÇÃO DE SALDO
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderProjection() {
+  const section = document.getElementById('projectionSection');
+  const card    = document.getElementById('projectionCard');
+  if (!section || !card) return;
+
+  const now      = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const txs      = state.transactions || [];
+  const txMonth  = txs.filter(t => t.date.startsWith(thisMonth));
+
+  const incomeNow  = txMonth.filter(t => t.type === 'income') .reduce((s, t) => s + t.amount, 0);
+  const expenseNow = txMonth.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const balanceNow = incomeNow - expenseNow;
+
+  // Recorrentes ainda a vencer até fim do mês
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  let pendingIncome  = 0;
+  let pendingExpense = 0;
+
+  (state.recurringTransactions || []).filter(r => r.active).forEach(r => {
+    if (r.freq !== 'monthly') return;
+    const dueDate = new Date(now.getFullYear(), now.getMonth(), r.day);
+    if (dueDate > now && dueDate <= lastDay) {
+      if (r.type === 'income')   pendingIncome  += r.amount;
+      if (r.type === 'expense')  pendingExpense += r.amount;
+    }
+  });
+
+  const projected = balanceNow + pendingIncome - pendingExpense;
+  const hasPending = pendingIncome > 0 || pendingExpense > 0;
+
+  section.style.display = '';
+  const cls = projected >= 0 ? 'positive' : 'negative';
+  card.innerHTML = `
+    <div class="projection-left">
+      <div class="projection-label">Projeção fim do mês</div>
+      <div class="projection-value ${cls}">${fmt(projected)}</div>
+      ${hasPending ? `<div class="projection-sub">
+        ${pendingIncome > 0  ? `<span class="proj-income">+${fmt(pendingIncome)} a receber</span>` : ''}
+        ${pendingExpense > 0 ? `<span class="proj-expense">−${fmt(pendingExpense)} a pagar</span>` : ''}
+      </div>` : '<div class="projection-sub" style="color:var(--muted)">Sem recorrentes pendentes</div>'}
+    </div>
+    <div class="projection-icon">${projected >= 0 ? '📈' : '📉'}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INSIGHTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderInsights() {
+  const section    = document.getElementById('insightsSection');
+  const container  = document.getElementById('insightsList');
+  if (!section || !container) return;
+
+  const now        = new Date();
+  const thisMonth  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevDate   = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonth  = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+  const txs        = state.transactions || [];
+  const thisExp    = txs.filter(t => t.type === 'expense' && t.date.startsWith(thisMonth));
+  const prevExp    = txs.filter(t => t.type === 'expense' && t.date.startsWith(prevMonth));
+
+  if (!thisExp.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  // Top categoria
+  const catTotals = {};
+  thisExp.forEach(t => { catTotals[t.cat] = (catTotals[t.cat] || 0) + t.amount; });
+  const topCat  = Object.entries(catTotals).sort((a,b) => b[1]-a[1])[0];
+  const topInfo = topCat ? getCatInfo(topCat[0]) : null;
+
+  // Média diária
+  const daysElapsed = now.getDate();
+  const totalExp    = thisExp.reduce((s, t) => s + t.amount, 0);
+  const dailyAvg    = totalExp / daysElapsed;
+
+  // Maior gasto único
+  const biggest = thisExp.reduce((max, t) => t.amount > max.amount ? t : max, thisExp[0]);
+
+  // vs mês passado
+  const prevTotal  = prevExp.reduce((s, t) => s + t.amount, 0);
+  const diffPct    = prevTotal > 0 ? ((totalExp - prevTotal) / prevTotal * 100) : null;
+
+  // Taxa de poupança
+  const thisInc  = txs.filter(t => t.type === 'income' && t.date.startsWith(thisMonth)).reduce((s,t) => s+t.amount, 0);
+  const savRate  = thisInc > 0 ? ((thisInc - totalExp) / thisInc * 100) : null;
+
+  const insights = [
+    topInfo ? {
+      icon: topInfo.icon, color: 'var(--red-bg)',
+      label: 'Maior categoria',
+      value: topInfo.label,
+      sub:   fmt(topCat[1]),
+    } : null,
+    {
+      icon: '📅', color: 'var(--blue-bg)',
+      label: 'Média diária',
+      value: fmt(dailyAvg),
+      sub: `${daysElapsed} dias no mês`,
+    },
+    biggest ? {
+      icon: '💸', color: 'var(--amber-bg)',
+      label: 'Maior gasto único',
+      value: fmt(biggest.amount),
+      sub: biggest.desc,
+    } : null,
+    diffPct !== null ? {
+      icon: diffPct >= 0 ? '⬆️' : '⬇️',
+      color: diffPct >= 0 ? 'var(--red-bg)' : 'var(--green-bg)',
+      label: 'vs. mês passado',
+      value: (diffPct >= 0 ? '+' : '') + diffPct.toFixed(1) + '%',
+      sub: 'em despesas totais',
+    } : null,
+    savRate !== null ? {
+      icon: savRate >= 0 ? '🐖' : '😬',
+      color: savRate >= 20 ? 'var(--green-bg)' : savRate >= 0 ? 'var(--amber-bg)' : 'var(--red-bg)',
+      label: 'Taxa de poupança',
+      value: savRate.toFixed(1) + '%',
+      sub: savRate >= 20 ? 'Ótimo!' : savRate >= 0 ? 'Pode melhorar' : 'Déficit no mês',
+    } : null,
+  ].filter(Boolean);
+
+  container.innerHTML = `<div class="insights-grid">${
+    insights.map(i => `<div class="insight-card" style="background:${i.color}">
+      <div class="insight-icon">${i.icon}</div>
+      <div class="insight-label">${i.label}</div>
+      <div class="insight-value">${i.value}</div>
+      <div class="insight-sub">${i.sub}</div>
+    </div>`).join('')
+  }</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SALDO ROLANTE DE ORÇAMENTO
+// ══════════════════════════════════════════════════════════════════════════════
+
+function processRollover() {
+  const now     = new Date();
+  const currM   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (state.lastRolloverMonth === currM) return; // já processado este mês
+
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevM    = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+  // Calcula gastos do mês anterior por categoria
+  const prevExp  = {};
+  (state.transactions || [])
+    .filter(t => t.type === 'expense' && t.date.startsWith(prevM))
+    .forEach(t => { prevExp[t.cat] = (prevExp[t.cat] || 0) + t.amount; });
+
+  let changed = false;
+  if (!state.budgetBonus)   state.budgetBonus   = {};
+  if (!state.budgetRollover) state.budgetRollover = {};
+
+  Object.entries(state.budgets || {}).forEach(([cat, limit]) => {
+    if (!state.budgetRollover[cat]) return; // rollover desativado
+    const spent   = prevExp[cat] || 0;
+    const surplus = limit - spent;
+    if (surplus > 0) {
+      state.budgetBonus[cat] = (state.budgetBonus[cat] || 0) + surplus;
+      changed = true;
+    }
+  });
+
+  state.lastRolloverMonth = currM;
+  if (changed) { saveData(); showToast('Saldo rolante atualizado 🎉'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IMPORTAR CSV DO BANCO
+// ══════════════════════════════════════════════════════════════════════════════
+
+let csvRows = [];
+let csvHeaders = [];
+
+function openImportModal() {
+  csvRows = []; csvHeaders = [];
+  const file = document.getElementById('csvFile');
+  if (file) file.value = '';
+  document.getElementById('csvMapSection').style.display = 'none';
+  document.getElementById('csvPreview').innerHTML = '';
+  document.getElementById('csvImportBtn').style.display = 'none';
+  document.getElementById('importModal').classList.add('open');
+}
+
+function previewCSV() {
+  const file = document.getElementById('csvFile').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    // Detecta separador
+    const sep = text.split('\n')[0].includes(';') ? ';' : ',';
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length < 2) { showToast('CSV inválido ou vazio'); return; }
+
+    csvHeaders = lines[0].split(sep).map(h => h.replace(/"/g, '').trim());
+    csvRows    = lines.slice(1).map(l => l.split(sep).map(c => c.replace(/"/g, '').trim()));
+
+    // Popula selects de colunas
+    const opts = csvHeaders.map((h, i) => `<option value="${i}">${h}</option>`).join('');
+    ['csvColDate', 'csvColDesc', 'csvColAmt'].forEach(id => {
+      document.getElementById(id).innerHTML = opts;
+    });
+    // Tenta adivinhar as colunas
+    csvHeaders.forEach((h, i) => {
+      const hl = h.toLowerCase();
+      if (/data|date|dt/.test(hl))          document.getElementById('csvColDate').value = i;
+      if (/desc|hist|memo|lancamento/.test(hl)) document.getElementById('csvColDesc').value = i;
+      if (/valor|value|amount|val/.test(hl)) document.getElementById('csvColAmt').value = i;
+    });
+
+    // Popula categoria padrão
+    const cats = getAllCategories().expense;
+    document.getElementById('csvDefaultCat').innerHTML =
+      cats.map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+
+    // Preview das primeiras 5 linhas
+    const preview5 = csvRows.slice(0, 5);
+    document.getElementById('csvPreview').innerHTML = `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${csvRows.length} transações detectadas — preview:</div>
+      <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead><tr>${csvHeaders.map(h => `<th style="padding:6px 8px;background:var(--surface2);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+          <tbody>${preview5.map(row => `<tr>${row.map(cell => `<td style="padding:5px 8px;border-top:1px solid var(--border)">${cell}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+
+    document.getElementById('csvMapSection').style.display = '';
+    document.getElementById('csvImportBtn').style.display  = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function importCSV() {
+  const colDate    = parseInt(document.getElementById('csvColDate').value);
+  const colDesc    = parseInt(document.getElementById('csvColDesc').value);
+  const colAmt     = parseInt(document.getElementById('csvColAmt').value);
+  const defaultCat = document.getElementById('csvDefaultCat').value;
+
+  let imported = 0;
+  csvRows.forEach(row => {
+    if (row.length < Math.max(colDate, colDesc, colAmt) + 1) return;
+    const rawDate = row[colDate];
+    const desc    = row[colDesc];
+    const rawAmt  = row[colAmt].replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+    const amount  = parseFloat(rawAmt);
+    if (!desc || isNaN(amount) || amount === 0) return;
+
+    // Tenta parsear data (suporta DD/MM/YYYY e YYYY-MM-DD)
+    let date = todayStr();
+    const dmY = rawDate.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    const Ymd = rawDate.match(/^(\d{4})[\/-](\d{2})[\/-](\d{2})/);
+    if (dmY) {
+      const y = dmY[3].length === 2 ? '20' + dmY[3] : dmY[3];
+      date = y + '-' + dmY[2].padStart(2,'0') + '-' + dmY[1].padStart(2,'0');
+    } else if (Ymd) {
+      date = Ymd[1] + '-' + Ymd[2] + '-' + Ymd[3];
+    }
+
+    const type = amount >= 0 ? 'income' : 'expense';
+    state.transactions.push({
+      id: Date.now().toString() + '_csv' + imported,
+      type, desc, amount: Math.abs(amount), cat: defaultCat, date,
+      tags: ['importado'], note: '',
+    });
+    imported++;
+  });
+
+  if (imported === 0) { showToast('Nenhuma transacao valida encontrada'); return; }
+  state.transactions.sort((a, b) => b.date.localeCompare(a.date));
+  closeModal('importModal');
+  saveData(); renderAll();
+  showToast(imported + ' transacoes importadas');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // CONTAS
 // ══════════════════════════════════════════════════════════════════════════════
 
-function openAccountModal(id = null) {
+function openAccountModal(id) {
+  id = id || null;
   editingAccountId = id;
-  const acc = id ? (state.accounts || []).find(a => a.id === id) : null;
+  var acc = id ? (state.accounts || []).find(function(a){return a.id===id;}) : null;
   document.getElementById('accountModalTitle').textContent = id ? 'Editar conta' : 'Nova conta';
-  document.getElementById('account-icon').value    = acc ? (acc.icon    || '💳')  : '💳';
-  document.getElementById('account-name').value    = acc ? (acc.name    || '')    : '';
+  document.getElementById('account-icon').value    = acc ? (acc.icon    || '\u{1F4B3}') : '\u{1F4B3}';
+  document.getElementById('account-name').value    = acc ? (acc.name    || '')  : '';
   document.getElementById('account-initial').value = acc ? (acc.initialBalance != null ? acc.initialBalance : '') : '';
   document.getElementById('accountModal').classList.add('open');
 }
 
 function saveAccount() {
-  const icon    = document.getElementById('account-icon').value.trim()    || '💳';
-  const name    = document.getElementById('account-name').value.trim();
-  const initial = parseFloat(document.getElementById('account-initial').value) || 0;
+  var icon    = document.getElementById('account-icon').value.trim()    || '\u{1F4B3}';
+  var name    = document.getElementById('account-name').value.trim();
+  var initial = parseFloat(document.getElementById('account-initial').value) || 0;
   if (!name) { showToast('Digite o nome da conta'); return; }
   if (!state.accounts) state.accounts = [];
   if (editingAccountId) {
-    const idx = state.accounts.findIndex(a => a.id === editingAccountId);
-    if (idx >= 0) state.accounts[idx] = { ...state.accounts[idx], icon, name, initialBalance: initial };
+    var idx = state.accounts.findIndex(function(a){return a.id===editingAccountId;});
+    if (idx >= 0) state.accounts[idx] = Object.assign({}, state.accounts[idx], {icon:icon, name:name, initialBalance:initial});
   } else {
-    state.accounts.push({ id: Date.now().toString(), icon, name, initialBalance: initial });
+    state.accounts.push({id: Date.now().toString(), icon:icon, name:name, initialBalance:initial});
   }
   editingAccountId = null;
   closeModal('accountModal');
-  saveData();
-  renderAccountBalances();
-  renderAccountsConfig();
-  populateAccountSelect();
+  saveData(); renderAccountBalances(); renderAccountsConfig(); populateAccountSelect();
   showToast('Conta salva');
 }
 
 function deleteAccount(id) {
-  if (!confirm('Remover esta conta? Transações vinculadas ficam sem conta.')) return;
-  state.accounts = (state.accounts || []).filter(a => a.id !== id);
-  saveData();
-  renderAccountBalances();
-  renderAccountsConfig();
-  populateAccountSelect();
+  if (!confirm('Remover esta conta?')) return;
+  state.accounts = (state.accounts || []).filter(function(a){return a.id!==id;});
+  saveData(); renderAccountBalances(); renderAccountsConfig(); populateAccountSelect();
   showToast('Conta removida');
 }
 
 function populateAccountSelect() {
-  const sel = document.getElementById('tx-account');
+  var sel = document.getElementById('tx-account');
   if (!sel) return;
-  const accounts = state.accounts || [];
-  const field    = document.getElementById('tx-account-field');
+  var accounts = state.accounts || [];
+  var field    = document.getElementById('tx-account-field');
   if (field) field.style.display = accounts.length ? '' : 'none';
-  sel.innerHTML  = '<option value="">Sem conta específica</option>' +
-    accounts.map(a => `<option value="${a.id}">${a.icon} ${a.name}</option>`).join('');
+  sel.innerHTML = '<option value="">Sem conta especifica</option>' +
+    accounts.map(function(a){return '<option value="'+a.id+'">'+a.icon+' '+a.name+'</option>';}).join('');
 }
 
 function renderAccountBalances() {
-  const accounts = state.accounts || [];
-  const section  = document.getElementById('accountsSection');
-  const scroll   = document.getElementById('accountsScroll');
+  var accounts = state.accounts || [];
+  var section  = document.getElementById('accountsSection');
+  var scroll   = document.getElementById('accountsScroll');
   if (!section || !scroll) return;
   if (!accounts.length) { section.style.display = 'none'; return; }
   section.style.display = '';
-  scroll.innerHTML = accounts.map(acc => {
-    const income  = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'income') .reduce((s, t) => s + t.amount, 0);
-    const expense = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const balance = (acc.initialBalance || 0) + income - expense;
-    const cls     = balance >= 0 ? 'positive' : 'negative';
-    return `<div class="account-card" onclick="openAccountModal('${acc.id}')">
-      <div class="account-card-icon">${acc.icon}</div>
-      <div class="account-card-name">${acc.name}</div>
-      <div class="account-card-balance ${cls}">${fmt(balance)}</div>
-    </div>`;
+  scroll.innerHTML = accounts.map(function(acc) {
+    var income  = (state.transactions || []).filter(function(t){return t.accountId===acc.id&&t.type==='income';}) .reduce(function(s,t){return s+t.amount;},0);
+    var expense = (state.transactions || []).filter(function(t){return t.accountId===acc.id&&t.type==='expense';}).reduce(function(s,t){return s+t.amount;},0);
+    var balance = (acc.initialBalance||0)+income-expense;
+    var cls     = balance>=0?'positive':'negative';
+    return '<div class="account-card" onclick="openAccountModal(\''+acc.id+'\')"><div class="account-card-icon">'+acc.icon+'</div><div class="account-card-name">'+acc.name+'</div><div class="account-card-balance '+cls+'">'+fmt(balance)+'</div></div>';
   }).join('');
 }
 
 function renderAccountsConfig() {
-  const accounts  = state.accounts || [];
-  const container = document.getElementById('accountsConfigList');
+  var accounts  = state.accounts || [];
+  var container = document.getElementById('accountsConfigList');
   if (!container) return;
   if (!accounts.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">🏦</div>Nenhuma conta cadastrada<br><br>
-      <button class="btn btn-primary" onclick="openAccountModal()">Adicionar primeira conta</button></div>`;
+    container.innerHTML = '<div class="empty"><div class="empty-icon">\u{1F3E6}</div>Nenhuma conta cadastrada<br><br><button class="btn btn-primary" onclick="openAccountModal()">Adicionar primeira conta</button></div>';
     return;
   }
-  container.innerHTML = accounts.map(acc => {
-    const income  = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'income') .reduce((s, t) => s + t.amount, 0);
-    const expense = (state.transactions || []).filter(t => t.accountId === acc.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const balance = (acc.initialBalance || 0) + income - expense;
-    const cls     = balance >= 0 ? 'income' : 'expense';
-    return `<div class="recurring-item">
-      <div class="tx-icon" style="background:var(--blue-bg);font-size:18px">${acc.icon}</div>
-      <div class="recurring-info">
-        <div class="recurring-desc">${acc.name}</div>
-        <div class="recurring-meta">Saldo: <span class="${cls}" style="font-weight:600">${fmt(balance)}</span></div>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="openAccountModal('${acc.id}')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      </button>
-      <button class="tx-delete" style="opacity:1" onclick="deleteAccount('${acc.id}')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-      </button>
-    </div>`;
+  container.innerHTML = accounts.map(function(acc) {
+    var income  = (state.transactions||[]).filter(function(t){return t.accountId===acc.id&&t.type==='income';}).reduce(function(s,t){return s+t.amount;},0);
+    var expense = (state.transactions||[]).filter(function(t){return t.accountId===acc.id&&t.type==='expense';}).reduce(function(s,t){return s+t.amount;},0);
+    var balance = (acc.initialBalance||0)+income-expense;
+    var cls     = balance>=0?'income':'expense';
+    return '<div class="recurring-item"><div class="tx-icon" style="background:var(--blue-bg);font-size:18px">'+acc.icon+'</div><div class="recurring-info"><div class="recurring-desc">'+acc.name+'</div><div class="recurring-meta">Saldo: <span class="'+cls+'" style="font-weight:600">'+fmt(balance)+'</span></div></div><button class="btn btn-ghost btn-sm" onclick="openAccountModal(\''+acc.id+'\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="tx-delete" style="opacity:1" onclick="deleteAccount(\''+acc.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button></div>';
   }).join('');
 }
 
@@ -1637,36 +1933,21 @@ function renderAccountsConfig() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function renderNotifSection() {
-  const container = document.getElementById('notifSection');
+  var container = document.getElementById('notifSection');
   if (!container) return;
   if (!('Notification' in window)) {
-    container.innerHTML = `<div style="padding:1rem;font-size:13px;color:var(--muted)">Seu navegador não suporta notificações push.</div>`;
+    container.innerHTML = '<div style="padding:1rem;font-size:13px;color:var(--muted)">Seu navegador nao suporta notificacoes push.</div>';
     return;
   }
-  const perm  = Notification.permission;
-  const icon  = perm === 'granted' ? '🔔' : '🔕';
-  const label = perm === 'granted' ? 'Notificações ativas' : perm === 'denied' ? 'Notificações bloqueadas' : 'Notificações desativadas';
-  const desc  = perm === 'granted'
-    ? 'Alertas de vencimentos e orçamentos ativados.'
-    : perm === 'denied'
-    ? 'Desbloqueie nas configurações do navegador/celular.'
-    : 'Ative para receber alertas de vencimentos e orçamentos.';
-  container.innerHTML = `<div style="padding:1rem">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:${perm !== 'granted' && perm !== 'denied' ? '12px' : '0'}">
-      <span style="font-size:26px">${icon}</span>
-      <div>
-        <div style="font-weight:600;font-size:14px">${label}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">${desc}</div>
-      </div>
-    </div>
-    ${perm !== 'granted' && perm !== 'denied'
-      ? `<button class="btn btn-primary btn-full" onclick="requestNotificationPermission().then(()=>renderNotifSection())">Ativar notificações</button>`
-      : ''}
-  </div>`;
+  var perm  = Notification.permission;
+  var icon  = perm === 'granted' ? '\uD83D\uDD14' : '\uD83D\uDD15';
+  var label = perm === 'granted' ? 'Notificacoes ativas' : perm === 'denied' ? 'Notificacoes bloqueadas' : 'Notificacoes desativadas';
+  var desc  = perm === 'granted' ? 'Alertas de vencimentos e orcamentos ativados.' : perm === 'denied' ? 'Desbloqueie nas configuracoes do navegador/celular.' : 'Ative para receber alertas de vencimentos e orcamentos.';
+  container.innerHTML = '<div style="padding:1rem"><div style="display:flex;align-items:center;gap:12px;margin-bottom:'+(perm!=='granted'&&perm!=='denied'?'12px':'0')+'"><span style="font-size:26px">'+icon+'</span><div><div style="font-weight:600;font-size:14px">'+label+'</div><div style="font-size:12px;color:var(--muted);margin-top:2px">'+desc+'</div></div></div>'+(perm!=='granted'&&perm!=='denied'?'<button class="btn btn-primary btn-full" onclick="requestNotificationPermission().then(function(){renderNotifSection();})">Ativar notificacoes</button>':'')+'</div>';
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MODO FAMÍLIA
+// MODO FAMILIA
 // ══════════════════════════════════════════════════════════════════════════════
 
 function generateInviteCode() {
@@ -1674,123 +1955,82 @@ function generateInviteCode() {
 }
 
 function renderFamilySection() {
-  const container = document.getElementById('familySection');
+  var container = document.getElementById('familySection');
   if (!container) return;
   if (currentFamilyCode) {
-    const isOwner = localStorage.getItem('giwallet_family_owner') === 'true';
-    container.innerHTML = `<div style="padding:1rem">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <span style="font-size:26px">👨‍👩‍👧</span>
-        <div>
-          <div style="font-weight:600;font-size:14px">Modo família ativo</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">Dados compartilhados em tempo real</div>
-        </div>
-      </div>
-      ${isOwner ? `<div style="margin-bottom:16px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;text-align:center">Código para convidar alguém</div>
-        <div style="font-size:26px;font-weight:800;letter-spacing:6px;color:var(--blue);text-align:center;background:var(--blue-bg);padding:14px;border-radius:14px">${currentFamilyCode}</div>
-        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">Compartilhe este código com sua família</div>
-      </div>` : `<div style="margin-bottom:16px;text-align:center;font-size:13px;color:var(--muted)">
-        Você entrou no grupo com código <strong>${currentFamilyCode}</strong>
-      </div>`}
-      <button class="btn btn-ghost btn-full" onclick="leaveFamily()" style="color:var(--red);border-color:var(--red)">
-        Sair do grupo familiar
-      </button>
-    </div>`;
+    var isOwner = localStorage.getItem('giwallet_family_owner') === 'true';
+    container.innerHTML = '<div style="padding:1rem"><div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><span style="font-size:26px">\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67</span><div><div style="font-weight:600;font-size:14px">Modo familia ativo</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Dados compartilhados em tempo real</div></div></div>'+(isOwner?'<div style="margin-bottom:16px"><div style="font-size:12px;color:var(--muted);margin-bottom:6px;text-align:center">Codigo para convidar alguem</div><div style="font-size:26px;font-weight:800;letter-spacing:6px;color:var(--blue);text-align:center;background:var(--blue-bg);padding:14px;border-radius:14px">'+currentFamilyCode+'</div><div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">Compartilhe este codigo com sua familia</div></div>':'<div style="margin-bottom:16px;text-align:center;font-size:13px;color:var(--muted)">Voce entrou no grupo com codigo <strong>'+currentFamilyCode+'</strong></div>')+'<button class="btn btn-ghost btn-full" onclick="leaveFamily()" style="color:var(--red);border-color:var(--red)">Sair do grupo familiar</button></div>';
   } else {
-    container.innerHTML = `<div style="padding:1rem">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
-        Compartilhe suas finanças com alguém em tempo real. Perfeito para casais e famílias.
-      </p>
-      <button class="btn btn-primary btn-full" onclick="openFamilyModal()">Configurar modo família</button>
-    </div>`;
+    container.innerHTML = '<div style="padding:1rem"><p style="font-size:13px;color:var(--muted);margin-bottom:16px">Compartilhe suas financas com alguem em tempo real.</p><button class="btn btn-primary btn-full" onclick="openFamilyModal()">Configurar modo familia</button></div>';
   }
 }
 
 function openFamilyModal() {
-  const input = document.getElementById('family-code-input');
+  var input = document.getElementById('family-code-input');
   if (input) input.value = '';
   document.getElementById('familyModal').classList.add('open');
 }
 
 async function createFamily() {
-  const code = generateInviteCode();
+  var code = generateInviteCode();
   setSyncing(true);
   try {
-    const clean = JSON.parse(JSON.stringify(normalizeState(state)));
+    var clean = JSON.parse(JSON.stringify(normalizeState(state)));
     await db.collection(COLLECTION).doc('family_' + code).set(clean);
     currentFamilyCode = code;
-    localStorage.setItem('giwallet_family',       code);
+    localStorage.setItem('giwallet_family', code);
     localStorage.setItem('giwallet_family_owner', 'true');
     closeModal('familyModal');
     restartDataSync();
     renderFamilySection();
-    showToast('Grupo criado! Código: ' + code);
-  } catch (e) {
+    showToast('Grupo criado! Codigo: ' + code);
+  } catch(e) {
     console.error('createFamily:', e);
-    if (e.code === 'permission-denied') {
-      showToast('Sem permissão no Firestore — atualize as regras (veja abaixo)');
-      showFirestoreRulesAlert();
-    } else {
-      showToast('Erro: ' + (e.message || e.code || 'desconhecido'));
-    }
+    if (e.code === 'permission-denied') { showToast('Sem permissao no Firestore'); showFirestoreRulesAlert(); }
+    else { showToast('Erro: ' + (e.message || e.code || 'desconhecido')); }
   }
   setSyncing(false);
 }
 
 async function joinFamily() {
-  const input = document.getElementById('family-code-input');
-  const code  = (input ? input.value : '').trim().toUpperCase();
-  if (!code) { showToast('Digite o código de convite'); return; }
+  var input = document.getElementById('family-code-input');
+  var code  = (input ? input.value : '').trim().toUpperCase();
+  if (!code) { showToast('Digite o codigo de convite'); return; }
   setSyncing(true);
   try {
-    const snap = await db.collection(COLLECTION).doc('family_' + code).get();
-    if (!snap.exists) { showToast('Código inválido ou grupo não encontrado'); setSyncing(false); return; }
+    var snap = await db.collection(COLLECTION).doc('family_' + code).get();
+    if (!snap.exists) { showToast('Codigo invalido ou grupo nao encontrado'); setSyncing(false); return; }
     currentFamilyCode = code;
     localStorage.setItem('giwallet_family', code);
     localStorage.removeItem('giwallet_family_owner');
     closeModal('familyModal');
     restartDataSync();
     renderFamilySection();
-    showToast('✅ Conectado ao grupo familiar!');
-  } catch (e) {
+    showToast('Conectado ao grupo familiar!');
+  } catch(e) {
     console.error('joinFamily:', e);
-    if (e.code === 'permission-denied') {
-      showToast('Sem permissão no Firestore — atualize as regras (veja abaixo)');
-      showFirestoreRulesAlert();
-    } else {
-      showToast('Erro: ' + (e.message || e.code || 'desconhecido'));
-    }
+    if (e.code === 'permission-denied') { showToast('Sem permissao no Firestore'); showFirestoreRulesAlert(); }
+    else { showToast('Erro: ' + (e.message || e.code || 'desconhecido')); }
   }
   setSyncing(false);
 }
 
 function showFirestoreRulesAlert() {
-  // Mostra um alerta claro com as regras a copiar
   if (document.getElementById('firestoreRulesAlert')) return;
-  const div = document.createElement('div');
+  var div = document.createElement('div');
   div.id = 'firestoreRulesAlert';
   div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
-  div.innerHTML = `<div style="background:var(--surface);border-radius:16px;padding:1.5rem;max-width:380px;width:100%">
-    <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">Atualizar regras do Firestore</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-      Para o modo família funcionar, acesse o <strong>Firebase Console → Firestore → Regras</strong> e substitua pelo seguinte:
-    </p>
-    <pre style="background:var(--surface2);border-radius:10px;padding:12px;font-size:11px;overflow-x:auto;white-space:pre-wrap;line-height:1.5">rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /financas/{document} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}</pre>
-    <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="document.getElementById('firestoreRulesAlert').remove()">Entendi</button>
-  </div>`;
+  div.innerHTML = '<div style="background:var(--surface);border-radius:16px;padding:1.5rem;max-width:380px;width:100%">' +
+    '<h3 style="font-size:16px;font-weight:700;margin-bottom:8px">Atualizar regras do Firestore</h3>' +
+    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Para o modo familia funcionar, acesse Firebase Console &rarr; Firestore &rarr; Regras e substitua por:</p>' +
+    '<pre id="fsRulesPre" style="background:var(--surface2);border-radius:10px;padding:12px;font-size:11px;overflow-x:auto;white-space:pre-wrap;line-height:1.5"></pre>' +
+    '<button class="btn btn-primary btn-full" style="margin-top:14px" onclick="document.getElementById(\'firestoreRulesAlert\').remove()">Entendi</button>' +
+    '</div>';
+  div.querySelector('#fsRulesPre').textContent = "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /financas/{document} {\n      allow read, write: if request.auth \!= null;\n    }\n  }\n}";
   document.body.appendChild(div);
 }
-
 function leaveFamily() {
-  if (!confirm('Sair do grupo familiar?\n\nSeus dados voltarão a ser individuais.')) return;
+  if (!confirm('Sair do grupo familiar?')) return;
   currentFamilyCode = null;
   localStorage.removeItem('giwallet_family');
   localStorage.removeItem('giwallet_family_owner');
@@ -1798,12 +2038,15 @@ function leaveFamily() {
   renderFamilySection();
   showToast('Saiu do grupo familiar');
 }
-// ── Init ──────────────────────────────────────────────────────────────────────────────
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
 loadData();
 
-// ── Service Worker (PWA) ─────────────────────────────────────────────────────────
+// ── Service Worker (PWA) ──────────────────────────────────────────────────────
+
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
   });
 }

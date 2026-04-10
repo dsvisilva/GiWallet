@@ -899,3 +899,62 @@ body {
 }
 .account-card-balance.positive { color: var(--green); }
 .account-card-balance.negative { color: var(--red);   }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TAGS & NOTA NAS TRANSAÇÕES
+══════════════════════════════════════════════════════════════════════════════ */
+.tx-tags-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tx-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--blue-bg);
+  color: var(--blue);
+  font-weight: 500;
+}
+.tx-note-text {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+  font-style: italic;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PROJEÇÃO DE SALDO
+══════════════════════════════════════════════════════════════════════════════ */
+.projection-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 1.25rem;
+  margin: 0 1rem 12px;
+}
+.projection-label  { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.projection-value  { font-size: 22px; font-weight: 800; }
+.projection-value.positive { color: var(--green); }
+.projection-value.negative { color: var(--red);   }
+.projection-sub    { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+.proj-income       { font-size: 11px; color: var(--green); font-weight: 600; }
+.proj-expense      { font-size: 11px; color: var(--red);   font-weight: 600; }
+.projection-icon   { font-size: 32px; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   INSIGHTS
+══════════════════════════════════════════════════════════════════════════════ */
+.insights-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 1.25rem 1rem;
+}
+.insight-card {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+.insight-icon  { font-size: 20px; margin-bottom: 6px; }
+.insight-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.insight-value { font-size: 16px; font-weight: 800; color: var(--text); }
+.insight-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

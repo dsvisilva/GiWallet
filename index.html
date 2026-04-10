@@ -187,6 +187,13 @@
     <div id="accountsSection" style="display:none">
       <div class="accounts-scroll" id="accountsScroll"></div>
     </div>
+    <div id="projectionSection" style="display:none">
+      <div class="projection-card" id="projectionCard"></div>
+    </div>
+    <div class="section" id="insightsSection" style="display:none">
+      <div class="section-header"><span class="section-title">📊 Insights do mês</span></div>
+      <div id="insightsList"></div>
+    </div>
     <div class="section" id="comparisonSection">
       <div class="section-header"><span class="section-title">Comparação mensal</span></div>
       <div id="comparisonBody"></div>
@@ -240,7 +247,8 @@
       <div class="section-header">
         <span class="section-title">Todas as transações</span>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">Exportar CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="openImportModal()">⬆ Importar</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ CSV</button>
           <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Adicionar</button>
         </div>
       </div>
@@ -259,6 +267,9 @@
         </select>
         <select id="filterMonth" onchange="renderTransactions()">
           <option value="">Todos os meses</option>
+        </select>
+        <select id="filterTag" onchange="renderTransactions()">
+          <option value="">Todas as tags</option>
         </select>
       </div>
       <ul class="tx-list" id="allTxList"></ul>
@@ -371,6 +382,14 @@
         <select id="tx-account"><option value="">Sem conta específica</option></select>
       </div>
       <div class="field">
+        <label>Tags <span style="font-size:11px;color:var(--muted)">(opcional, separadas por vírgula)</span></label>
+        <input type="text" id="tx-tags" placeholder="Ex: ifood, trabalho, parcelado">
+      </div>
+      <div class="field">
+        <label>Nota <span style="font-size:11px;color:var(--muted)">(opcional)</span></label>
+        <textarea id="tx-note" placeholder="Observações sobre esta transação..." rows="2" style="resize:none"></textarea>
+      </div>
+      <div class="field">
         <label class="check-label">
           <input type="checkbox" id="tx-is-installment" onchange="toggleInstallmentField()">
           <span>Compra parcelada</span>
@@ -400,6 +419,12 @@
     <div class="modal-body">
       <div class="field"><label>Categoria</label><select id="budget-cat"></select></div>
       <div class="field"><label>Limite mensal (R$)</label><input type="number" id="budget-amount" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="field">
+        <label class="check-label">
+          <input type="checkbox" id="budget-rollover">
+          <span>Saldo rolante — sobra do mês acumula para o próximo</span>
+        </label>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('budgetModal')">Cancelar</button>
@@ -572,6 +597,40 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('familyModal')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Importar CSV -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Importar CSV do banco</span>
+      <button class="modal-close" onclick="closeModal('importModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+        Exporte o extrato do seu banco em CSV e importe aqui. O app detecta as colunas automaticamente.
+      </p>
+      <div class="field">
+        <label>Arquivo CSV</label>
+        <input type="file" id="csvFile" accept=".csv,.txt,.ofx" onchange="previewCSV()" style="padding:8px">
+      </div>
+      <div id="csvMapSection" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div class="field"><label style="font-size:11px">Coluna Data</label><select id="csvColDate"></select></div>
+          <div class="field"><label style="font-size:11px">Coluna Descrição</label><select id="csvColDesc"></select></div>
+          <div class="field"><label style="font-size:11px">Coluna Valor</label><select id="csvColAmt"></select></div>
+        </div>
+        <div class="field"><label style="font-size:11px">Categoria padrão</label><select id="csvDefaultCat"></select></div>
+      </div>
+      <div id="csvPreview"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('importModal')">Cancelar</button>
+      <button class="btn btn-primary" id="csvImportBtn" style="display:none" onclick="importCSV()">Importar</button>
     </div>
   </div>
 </div>
