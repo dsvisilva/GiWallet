@@ -315,9 +315,10 @@ async function saveData() {
   isWriting = true;
   setSyncing(true);
   try {
-    const dataKey = getDataDocKey();
-    await db.collection(COLLECTION).doc(dataKey).set(state);
-  } catch (e) { showToast('Erro ao salvar'); }
+    const dataKey  = getDataDocKey();
+    const clean    = JSON.parse(JSON.stringify(normalizeState(state)));
+    await db.collection(COLLECTION).doc(dataKey).set(clean);
+  } catch (e) { console.error('saveData:', e); showToast('Erro ao salvar'); }
   isWriting = false;
   setTimeout(() => setSyncing(false), 600);
 }
@@ -1716,8 +1717,8 @@ async function createFamily() {
   const code = generateInviteCode();
   setSyncing(true);
   try {
-    // copia dados atuais para o documento da família
-    await db.collection(COLLECTION).doc('family_' + code).set(state);
+    const clean = JSON.parse(JSON.stringify(normalizeState(state)));
+    await db.collection(COLLECTION).doc('family_' + code).set(clean);
     currentFamilyCode = code;
     localStorage.setItem('giwallet_family',       code);
     localStorage.setItem('giwallet_family_owner', 'true');
@@ -1726,8 +1727,13 @@ async function createFamily() {
     renderFamilySection();
     showToast('Grupo criado! Código: ' + code);
   } catch (e) {
-    console.error(e);
-    showToast('Erro ao criar grupo');
+    console.error('createFamily:', e);
+    if (e.code === 'permission-denied') {
+      showToast('Sem permissão no Firestore — atualize as regras (veja abaixo)');
+      showFirestoreRulesAlert();
+    } else {
+      showToast('Erro: ' + (e.message || e.code || 'desconhecido'));
+    }
   }
   setSyncing(false);
 }
@@ -1738,8 +1744,8 @@ async function joinFamily() {
   if (!code) { showToast('Digite o código de convite'); return; }
   setSyncing(true);
   try {
-    const doc = await db.collection(COLLECTION).doc('family_' + code).get();
-    if (!doc.exists) { showToast('Código inválido ou grupo não encontrado'); setSyncing(false); return; }
+    const snap = await db.collection(COLLECTION).doc('family_' + code).get();
+    if (!snap.exists) { showToast('Código inválido ou grupo não encontrado'); setSyncing(false); return; }
     currentFamilyCode = code;
     localStorage.setItem('giwallet_family', code);
     localStorage.removeItem('giwallet_family_owner');
@@ -1748,10 +1754,39 @@ async function joinFamily() {
     renderFamilySection();
     showToast('✅ Conectado ao grupo familiar!');
   } catch (e) {
-    console.error(e);
-    showToast('Erro ao entrar no grupo');
+    console.error('joinFamily:', e);
+    if (e.code === 'permission-denied') {
+      showToast('Sem permissão no Firestore — atualize as regras (veja abaixo)');
+      showFirestoreRulesAlert();
+    } else {
+      showToast('Erro: ' + (e.message || e.code || 'desconhecido'));
+    }
   }
   setSyncing(false);
+}
+
+function showFirestoreRulesAlert() {
+  // Mostra um alerta claro com as regras a copiar
+  if (document.getElementById('firestoreRulesAlert')) return;
+  const div = document.createElement('div');
+  div.id = 'firestoreRulesAlert';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  div.innerHTML = `<div style="background:var(--surface);border-radius:16px;padding:1.5rem;max-width:380px;width:100%">
+    <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">Atualizar regras do Firestore</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Para o modo família funcionar, acesse o <strong>Firebase Console → Firestore → Regras</strong> e substitua pelo seguinte:
+    </p>
+    <pre style="background:var(--surface2);border-radius:10px;padding:12px;font-size:11px;overflow-x:auto;white-space:pre-wrap;line-height:1.5">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /financas/{document} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}</pre>
+    <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="document.getElementById('firestoreRulesAlert').remove()">Entendi</button>
+  </div>`;
+  document.body.appendChild(div);
 }
 
 function leaveFamily() {
@@ -1763,13 +1798,10 @@ function leaveFamily() {
   renderFamilySection();
   showToast('Saiu do grupo familiar');
 }
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-
+// ── Init ──────────────────────────────────────────────────────────────────────────────
 loadData();
 
-// ── Service Worker (PWA) ──────────────────────────────────────────────────────
-
+// ── Service Worker (PWA) ─────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
