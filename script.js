@@ -1814,8 +1814,20 @@ function importCSV() {
     if (row.length < Math.max(colDate, colDesc, colAmt) + 1) return;
     const rawDate = row[colDate];
     const desc    = row[colDesc];
-    const rawAmt  = row[colAmt].replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-    const amount  = parseFloat(rawAmt);
+    const rawAmt  = row[colAmt].trim();
+    const amount  = (function(s) {
+      s = s.replace(/[^\d.,-]/g, ''); // remove R$, espaços, etc.
+      var hasDot   = s.includes('.');
+      var hasComma = s.includes(',');
+      if (hasDot && hasComma) {
+        // ambos presentes: último separador é o decimal
+        return s.lastIndexOf(',') > s.lastIndexOf('.')
+          ? parseFloat(s.replace(/\./g, '').replace(',', '.'))  // 1.234,56
+          : parseFloat(s.replace(/,/g, ''));                     // 1,234.56
+      }
+      if (hasComma && !hasDot) return parseFloat(s.replace(',', '.')); // 1234,56
+      return parseFloat(s); // 1234.56 ou 1234
+    })(rawAmt);
     if (!desc || isNaN(amount) || amount === 0) return;
 
     // Tenta parsear data (suporta DD/MM/YYYY e YYYY-MM-DD)
@@ -2026,7 +2038,7 @@ function showFirestoreRulesAlert() {
     '<pre id="fsRulesPre" style="background:var(--surface2);border-radius:10px;padding:12px;font-size:11px;overflow-x:auto;white-space:pre-wrap;line-height:1.5"></pre>' +
     '<button class="btn btn-primary btn-full" style="margin-top:14px" onclick="document.getElementById(\'firestoreRulesAlert\').remove()">Entendi</button>' +
     '</div>';
-  div.querySelector('#fsRulesPre').textContent = "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /financas/{document} {\n      allow read, write: if request.auth \!= null;\n    }\n  }\n}";
+  div.querySelector('#fsRulesPre').textContent = "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /financas/{document} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}";
   document.body.appendChild(div);
 }
 function leaveFamily() {
